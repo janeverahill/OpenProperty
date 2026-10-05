@@ -606,6 +606,127 @@ app.delete("/api/payments/:id", async (c) => {
   return c.json({ ok: true });
 });
 
+// ── Payment reconciliation ─────────────────────────────────────────
+
+const ReconcilePaymentInput = z.object({
+  inbox_item_id: z.number().int().optional().nullable(),
+  charge_id: z.number().int(),
+  received_amount: z.number().positive(),
+  received_at: z.string(),
+  reference: z.string().min(1),
+  force_review: z.boolean().optional(),
+  review_reason: z.string().optional().nullable(),
+});
+
+app.post("/api/payment-reconciliations/evaluate", async (c) => {
+  const parsed = await parseJson(c, ReconcilePaymentInput);
+  if (!parsed.ok) return c.json({ error: parsed.error }, 400);
+  const d = parsed.data;
+
+  const duplicate = await get("SELECT * FROM payment_reconciliations WHERE reference = ?", [d.reference]);
+  if (duplicate) return c.json({ reconciliation: duplicate, duplicate: true });
+
+  const charge = await get<any>(
+    `SELECT c.*, l.unit_id, l.primary_tenant_id, u.property_id, u.name as unit_name,
+       t.first_name || ' ' || t.last_name as tenant_name
+     FROM rent_charges c
+     JOIN leases l ON l.id = c.lease_id
+     JOIN units u ON u.id = l.unit_id
+     LEFT JOIN tenants t ON t.id = l.primary_tenant_id
+     WHERE c.id = ?`,
+    [d.charge_id],
+  );
+  if (!charge) return c.json({ error: "Charge not found" }, 404);
+
+  const expectedRemaining = Math.max(0, Number(charge.amount) - Number(charge.amount_paid));
+  const received = Number(d.received_amount);
+  const difference = received - expectedRemaining;
+  const paidDate = d.received_at.slice(0, 10);
+  const late = paidDate > String(charge.due_date).slice(0, 10);
+
+  let matchType = "exact";
+  let status = "auto_matched";
+  let confidence = 0.99;
+  let reason = "";
+  if (d.force_review) {
+    matchType = "special_rule"; status = "needs_review"; confidence = 1;
+    reason = d.review_reason || "This account is configured for manual review.";
+  } else if (difference < 0) {
+    matchType = "short"; status = "needs_review"; confidence = 1;
+    reason = `Payment is ${Math.abs(difference).toFixed(2)} short of the remaining charge.`;
+  } else if (difference > 0) {
+    matchType = "over"; status = "needs_review"; confidence = 1;
+    reason = `Payment is ${difference.toFixed(2)} above the remaining charge.`;
+  } else if (late) {
+    matchType = "late"; status = "needs_review"; confidence = 1;
+    reason = `Amount matches, but payment was received after the due date (${charge.due_date}).`;
+  }
+
+  const rr = await run(
+    `INSERT INTO payment_reconciliations
+      (inbox_item_id, charge_id, unit_id, received_amount, expected_amount, received_at, reference, match_type, difference, confidence, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [d.inbox_item_id ?? null, d.charge_id, charge.unit_id, received, expectedRemaining, d.received_at,
+     d.reference, matchType, difference, confidence, status],
+  );
+  const reconciliationId = rr.lastInsertRowid;
+
+  if (status === "auto_matched") {
+    const payment = await run(
+      `INSERT INTO payments (charge_id, paid_at, amount, method, reference, notes)
+       VALUES (?, ?, ?, 'ach', ?, 'Auto-matched by payment reconciliation')`,
+      [d.charge_id, d.received_at, received, d.reference],
+    );
+    await run("UPDATE payment_reconciliations SET payment_id = ?, decision = 'auto_matched', reviewed_at = datetime('now') WHERE id = ?",
+      [payment.lastInsertRowid, reconciliationId]);
+    const sum = await get<{ total: number }>("SELECT COALESCE(SUM(amount),0) total FROM payments WHERE charge_id = ?", [d.charge_id]);
+    const totalPaid = Number(sum?.total ?? 0);
+    const chargeStatus = totalPaid >= Number(charge.amount) ? "paid" : totalPaid > 0 ? "partial" : "open";
+    await run("UPDATE rent_charges SET amount_paid = ?, status = ? WHERE id = ?", [totalPaid, chargeStatus, d.charge_id]);
+    await run(
+      `INSERT INTO activity_events
+        (property_id, unit_id, tenant_id, event_type, entity_type, entity_id, summary, detail, source)
+       VALUES (?, ?, ?, 'payment', 'payment_reconciliation', ?, ?, ?, 'system')`,
+      [charge.property_id, charge.unit_id, charge.primary_tenant_id, reconciliationId,
+       `Payment automatically reconciled: ${received.toFixed(2)}`,
+       `Reference ${d.reference}; exact match to remaining charge.`],
+    );
+    if (d.inbox_item_id) await run("UPDATE inbox_items SET status = 'handled', handled_at = datetime('now') WHERE id = ?", [d.inbox_item_id]);
+  } else {
+    const title = `Payment needs review — ${charge.unit_name || "unit"}`;
+    const proposed = matchType === "late" ? "Confirm the payment and review whether late-payment follow-up is required."
+      : matchType === "short" ? "Review the short payment before applying it."
+      : matchType === "over" ? "Review the overpayment and choose how the excess should be handled."
+      : "Review this payment manually before applying it.";
+    await run(
+      `INSERT INTO review_items
+        (inbox_item_id, property_id, unit_id, tenant_id, review_type, title, reason, proposed_action, confidence, risk_level)
+       VALUES (?, ?, ?, ?, 'payment', ?, ?, ?, ?, 'normal')`,
+      [d.inbox_item_id ?? null, charge.property_id, charge.unit_id, charge.primary_tenant_id,
+       title, reason, proposed, confidence],
+    );
+    if (d.inbox_item_id) await run("UPDATE inbox_items SET status = 'needs_review' WHERE id = ?", [d.inbox_item_id]);
+  }
+
+  const row = await get("SELECT * FROM payment_reconciliations WHERE id = ?", [reconciliationId]);
+  return c.json({ reconciliation: row, auto_matched: status === "auto_matched" }, 201);
+});
+
+app.get("/api/payment-reconciliations", async (c) => {
+  const status = c.req.query("status");
+  const params: unknown[] = [];
+  const where = status ? " WHERE pr.status = ?" : "";
+  if (status) params.push(status);
+  const rows = await query(
+    `SELECT pr.*, u.name as unit_name, p.name as property_name
+     FROM payment_reconciliations pr
+     LEFT JOIN units u ON u.id = pr.unit_id
+     LEFT JOIN properties p ON p.id = u.property_id
+     ${where} ORDER BY pr.created_at DESC LIMIT 250`, params,
+  ).catch(() => []);
+  return c.json({ payment_reconciliations: rows });
+});
+
 // ── Vendors ────────────────────────────────────────────────────────
 
 const VendorInput = z.object({
