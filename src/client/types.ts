@@ -217,3 +217,32 @@ export type NewLease = Partial<Omit<Lease, "id" | "created_at" | "unit_name" | "
 export type NewWorkOrder = Partial<Omit<WorkOrder, "id" | "created_at" | "property_name" | "property_color" | "unit_name" | "tenant_first_name" | "tenant_last_name" | "vendor_name" | "vendor_color">> & { title: string };
 export type NewVendor = Partial<Omit<Vendor, "id" | "created_at">> & { name: string };
 export type NewApplication = Partial<Omit<Application, "id" | "created_at" | "unit_name" | "property_name">> & { first_name: string; last_name: string };
+
+
+// ── AI operations layer ────────────────────────────────────────────
+export interface OperationsSummary {
+  needs_attention: number;
+  inbox_unprocessed: number;
+  handled_today: number;
+  payment_exceptions: number;
+  open_work_orders: number;
+}
+export interface ReviewItem {
+  id: number;
+  inbox_item_id: number | null;
+  property_id: number | null;
+  unit_id: number | null;
+  tenant_id: number | null;
+  review_type: "payment" | "maintenance" | "document" | "deadline" | "other";
+  title: string;
+  reason: string | null;
+  proposed_action: string | null;
+  confidence: number | null;
+  risk_level: "low" | "normal" | "high";
+  status: "open" | "approved" | "edited" | "dismissed";
+  resolution: string | null;
+  created_at: string;
+  property_name?: string | null;
+  unit_name?: string | null;
+  tenant_name?: string | null;
+}
