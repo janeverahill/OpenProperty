@@ -816,6 +816,174 @@ app.delete("/api/applications/:id", async (c) => {
   return c.json({ ok: true });
 });
 
+// ── AI operations layer ────────────────────────────────────────────
+
+const InboxInput = z.object({
+  source_type: z.enum(["email", "photo", "document", "manual", "integration"]),
+  source_ref: z.string().optional().nullable(),
+  property_id: z.number().int().optional().nullable(),
+  unit_id: z.number().int().optional().nullable(),
+  tenant_id: z.number().int().optional().nullable(),
+  item_type: z.enum(["payment", "maintenance", "document", "message", "unknown"]).optional(),
+  subject: z.string().optional().nullable(),
+  raw_text: z.string().optional().nullable(),
+  extracted_json: z.string().optional().nullable(),
+  confidence: z.number().min(0).max(1).optional().nullable(),
+  status: z.enum(["new", "classified", "needs_review", "handled", "dismissed"]).optional(),
+  received_at: z.string().optional(),
+});
+
+app.get("/api/inbox", async (c) => {
+  const status = c.req.query("status");
+  const params: unknown[] = [];
+  let where = "";
+  if (status) { where = " WHERE i.status = ?"; params.push(status); }
+  const rows = await query(
+    `SELECT i.*, p.name as property_name, u.name as unit_name,
+       t.first_name || ' ' || t.last_name as tenant_name
+     FROM inbox_items i
+     LEFT JOIN properties p ON p.id = i.property_id
+     LEFT JOIN units u ON u.id = i.unit_id
+     LEFT JOIN tenants t ON t.id = i.tenant_id
+     ${where} ORDER BY i.received_at DESC, i.id DESC LIMIT 250`,
+    params,
+  ).catch(() => []);
+  return c.json({ inbox_items: rows });
+});
+
+app.post("/api/inbox", async (c) => {
+  const parsed = await parseJson(c, InboxInput);
+  if (!parsed.ok) return c.json({ error: parsed.error }, 400);
+  const d = parsed.data;
+  const result = await run(
+    `INSERT INTO inbox_items
+      (source_type, source_ref, property_id, unit_id, tenant_id, item_type, subject, raw_text, extracted_json, confidence, status, received_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')))`,
+    [d.source_type, d.source_ref ?? null, d.property_id ?? null, d.unit_id ?? null, d.tenant_id ?? null,
+     d.item_type ?? "unknown", d.subject ?? null, d.raw_text ?? null, d.extracted_json ?? null,
+     d.confidence ?? null, d.status ?? "new", d.received_at ?? null],
+  );
+  const row = await get("SELECT * FROM inbox_items WHERE id = ?", [result.lastInsertRowid]);
+  return c.json({ inbox_item: row }, 201);
+});
+
+const ReviewInput = z.object({
+  inbox_item_id: z.number().int().optional().nullable(),
+  property_id: z.number().int().optional().nullable(),
+  unit_id: z.number().int().optional().nullable(),
+  tenant_id: z.number().int().optional().nullable(),
+  review_type: z.enum(["payment", "maintenance", "document", "deadline", "other"]),
+  title: z.string().min(1),
+  reason: z.string().optional().nullable(),
+  proposed_action: z.string().optional().nullable(),
+  proposed_json: z.string().optional().nullable(),
+  confidence: z.number().min(0).max(1).optional().nullable(),
+  risk_level: z.enum(["low", "normal", "high"]).optional(),
+});
+
+app.get("/api/review-items", async (c) => {
+  const status = c.req.query("status") ?? "open";
+  const rows = await query(
+    `SELECT r.*, p.name as property_name, u.name as unit_name,
+       t.first_name || ' ' || t.last_name as tenant_name
+     FROM review_items r
+     LEFT JOIN properties p ON p.id = r.property_id
+     LEFT JOIN units u ON u.id = r.unit_id
+     LEFT JOIN tenants t ON t.id = r.tenant_id
+     WHERE r.status = ?
+     ORDER BY CASE r.risk_level WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END, r.created_at ASC`,
+    [status],
+  ).catch(() => []);
+  return c.json({ review_items: rows });
+});
+
+app.post("/api/review-items", async (c) => {
+  const parsed = await parseJson(c, ReviewInput);
+  if (!parsed.ok) return c.json({ error: parsed.error }, 400);
+  const d = parsed.data;
+  const result = await run(
+    `INSERT INTO review_items
+      (inbox_item_id, property_id, unit_id, tenant_id, review_type, title, reason, proposed_action, proposed_json, confidence, risk_level)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [d.inbox_item_id ?? null, d.property_id ?? null, d.unit_id ?? null, d.tenant_id ?? null,
+     d.review_type, d.title, d.reason ?? null, d.proposed_action ?? null, d.proposed_json ?? null,
+     d.confidence ?? null, d.risk_level ?? "normal"],
+  );
+  if (d.inbox_item_id) await run("UPDATE inbox_items SET status = 'needs_review' WHERE id = ?", [d.inbox_item_id]);
+  const row = await get("SELECT * FROM review_items WHERE id = ?", [result.lastInsertRowid]);
+  return c.json({ review_item: row }, 201);
+});
+
+const ResolveReviewInput = z.object({
+  status: z.enum(["approved", "edited", "dismissed"]),
+  resolution: z.string().min(1),
+});
+
+app.post("/api/review-items/:id/resolve", async (c) => {
+  const id = intParam(c.req.param("id"));
+  if (!id) return c.json({ error: "Invalid ID" }, 400);
+  const parsed = await parseJson(c, ResolveReviewInput);
+  if (!parsed.ok) return c.json({ error: parsed.error }, 400);
+  const existing = await get<any>("SELECT * FROM review_items WHERE id = ?", [id]);
+  if (!existing) return c.json({ error: "Not found" }, 404);
+  await run(
+    "UPDATE review_items SET status = ?, resolution = ?, resolved_at = datetime('now') WHERE id = ?",
+    [parsed.data.status, parsed.data.resolution, id],
+  );
+  if (existing.inbox_item_id) {
+    const inboxStatus = parsed.data.status === "dismissed" ? "dismissed" : "handled";
+    await run("UPDATE inbox_items SET status = ?, handled_at = datetime('now') WHERE id = ?", [inboxStatus, existing.inbox_item_id]);
+  }
+  await run(
+    `INSERT INTO activity_events
+      (property_id, unit_id, tenant_id, event_type, entity_type, entity_id, summary, detail, source)
+     VALUES (?, ?, ?, 'review', 'review_item', ?, ?, ?, 'manager')`,
+    [existing.property_id, existing.unit_id, existing.tenant_id, id,
+     `${existing.title}: ${parsed.data.status}`, parsed.data.resolution],
+  );
+  const row = await get("SELECT * FROM review_items WHERE id = ?", [id]);
+  return c.json({ review_item: row });
+});
+
+app.get("/api/activity", async (c) => {
+  const unitId = intParam(c.req.query("unit_id"));
+  const tenantId = intParam(c.req.query("tenant_id"));
+  const where: string[] = [];
+  const params: unknown[] = [];
+  if (unitId) { where.push("a.unit_id = ?"); params.push(unitId); }
+  if (tenantId) { where.push("a.tenant_id = ?"); params.push(tenantId); }
+  const rows = await query(
+    `SELECT a.*, p.name as property_name, u.name as unit_name,
+       t.first_name || ' ' || t.last_name as tenant_name
+     FROM activity_events a
+     LEFT JOIN properties p ON p.id = a.property_id
+     LEFT JOIN units u ON u.id = a.unit_id
+     LEFT JOIN tenants t ON t.id = a.tenant_id
+     ${where.length ? " WHERE " + where.join(" AND ") : ""}
+     ORDER BY a.created_at DESC, a.id DESC LIMIT 500`,
+    params,
+  ).catch(() => []);
+  return c.json({ activity: rows });
+});
+
+app.get("/api/operations/summary", async (c) => {
+  const safeCount = (sql: string) => get<{ n: number }>(sql).catch(() => ({ n: 0 }));
+  const [attention, inboxNew, handledToday, pendingRecon, openWork] = await Promise.all([
+    safeCount("SELECT COUNT(*) n FROM review_items WHERE status = 'open'"),
+    safeCount("SELECT COUNT(*) n FROM inbox_items WHERE status IN ('new','classified')"),
+    safeCount("SELECT COUNT(*) n FROM inbox_items WHERE status = 'handled' AND date(handled_at) = date('now')"),
+    safeCount("SELECT COUNT(*) n FROM payment_reconciliations WHERE status IN ('pending','needs_review')"),
+    safeCount("SELECT COUNT(*) n FROM work_orders WHERE status NOT IN ('completed','cancelled')"),
+  ]);
+  return c.json({
+    needs_attention: attention?.n ?? 0,
+    inbox_unprocessed: inboxNew?.n ?? 0,
+    handled_today: handledToday?.n ?? 0,
+    payment_exceptions: pendingRecon?.n ?? 0,
+    open_work_orders: openWork?.n ?? 0,
+  });
+});
+
 // ── Dashboard summary ──────────────────────────────────────────────
 
 app.get("/api/dashboard/summary", async (c) => {
