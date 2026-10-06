@@ -991,6 +991,77 @@ app.post("/api/inbox", async (c) => {
   return c.json({ inbox_item: row }, 201);
 });
 
+const ProcessInboxMaintenanceInput = z.object({
+  priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
+  force_review: z.boolean().optional(),
+});
+
+app.post("/api/inbox/:id/process-maintenance", async (c) => {
+  const id = intParam(c.req.param("id"));
+  if (!id) return c.json({ error: "Invalid ID" }, 400);
+  const parsed = await parseJson(c, ProcessInboxMaintenanceInput);
+  if (!parsed.ok) return c.json({ error: parsed.error }, 400);
+
+  const item = await get<any>("SELECT * FROM inbox_items WHERE id = ?", [id]);
+  if (!item) return c.json({ error: "Inbox item not found" }, 404);
+  if (item.status === "handled" || item.status === "dismissed") {
+    return c.json({ error: "Inbox item has already been resolved" }, 409);
+  }
+
+  const title = item.subject || "Maintenance request";
+  const priority = parsed.data.priority ?? "normal";
+  const missingAssignment = !item.property_id || !item.unit_id;
+  const highRisk = priority === "urgent";
+  const shouldReview = parsed.data.force_review || missingAssignment || highRisk || (item.confidence != null && Number(item.confidence) < 0.9);
+
+  await run("UPDATE inbox_items SET item_type = 'maintenance', status = ? WHERE id = ?",
+    [shouldReview ? "needs_review" : "classified", id]);
+
+  if (shouldReview) {
+    const reasons = [
+      missingAssignment ? "Property or unit could not be confirmed." : null,
+      highRisk ? "Urgent maintenance requires manager review before routing." : null,
+      item.confidence != null && Number(item.confidence) < 0.9 ? "AI confidence is below the automatic-processing threshold." : null,
+      parsed.data.force_review ? "Manual review was requested." : null,
+    ].filter(Boolean).join(" ");
+    const existingReview = await get<any>(
+      "SELECT id FROM review_items WHERE inbox_item_id = ? AND review_type = 'maintenance' AND status = 'open' LIMIT 1",
+      [id],
+    );
+    if (!existingReview) {
+      await run(
+        `INSERT INTO review_items
+          (inbox_item_id, property_id, unit_id, tenant_id, review_type, title, reason, proposed_action, confidence, risk_level)
+         VALUES (?, ?, ?, ?, 'maintenance', ?, ?, ?, ?, ?)`,
+        [id, item.property_id, item.unit_id, item.tenant_id,
+         `Maintenance needs review — ${item.unit_id ? "assigned unit" : "unassigned"}`,
+         reasons || "Review this maintenance request before creating a work order.",
+         "Confirm the unit, urgency and work-order details.", item.confidence ?? null, highRisk ? "high" : "normal"],
+      );
+    }
+    return c.json({ needs_review: true, reason: reasons }, 202);
+  }
+
+  const wo = await run(
+    `INSERT INTO work_orders
+      (property_id, unit_id, tenant_id, title, description, priority, status, notes)
+     VALUES (?, ?, ?, ?, ?, ?, 'open', ?)`,
+    [item.property_id, item.unit_id, item.tenant_id, title, item.raw_text ?? null, priority,
+     `Created from AI Inbox item #${id} (${item.source_type})`],
+  );
+  await run("UPDATE inbox_items SET status = 'handled', handled_at = datetime('now') WHERE id = ?", [id]);
+  await run(
+    `INSERT INTO activity_events
+      (property_id, unit_id, tenant_id, event_type, entity_type, entity_id, summary, detail, source)
+     VALUES (?, ?, ?, 'maintenance', 'work_order', ?, ?, ?, 'ai')`,
+    [item.property_id, item.unit_id, item.tenant_id, wo.lastInsertRowid,
+     `Maintenance request converted to work order: ${title}`,
+     `AI Inbox item #${id}; priority ${priority}; source ${item.source_type}.`],
+  );
+  const row = await get(`${WO_SELECT} WHERE w.id = ?`, [wo.lastInsertRowid]);
+  return c.json({ needs_review: false, work_order: row }, 201);
+});
+
 const ReviewInput = z.object({
   inbox_item_id: z.number().int().optional().nullable(),
   property_id: z.number().int().optional().nullable(),
