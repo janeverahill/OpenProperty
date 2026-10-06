@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, Inbox, CircleAlert, FileText, Wrench, Sparkles, Camera, Plus } from "lucide-react";
 import { api } from "@/api";
 import { useApp } from "@/context";
@@ -17,6 +17,8 @@ export function AiInboxPage({ navigate }: { navigate: (to: string) => void }) {
   const [captureSubject, setCaptureSubject] = useState("");
   const [captureText, setCaptureText] = useState("");
   const [captureSource, setCaptureSource] = useState<"photo" | "manual">("photo");
+  const [photoName, setPhotoName] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
   const load = useCallback(async () => {
     try {
       setLoading(true);
@@ -33,6 +35,7 @@ export function AiInboxPage({ navigate }: { navigate: (to: string) => void }) {
       setProcessingId(-1);
       const created = await api<{ inbox_item: InboxItem }>("POST", "/api/inbox", {
         source_type: captureSource,
+        source_ref: photoName ? `local-photo:${photoName}` : null,
         item_type: "unknown",
         subject: captureSubject.trim() || (captureSource === "photo" ? "Photo intake" : "Manual intake"),
         raw_text: captureText.trim() || null,
@@ -42,6 +45,8 @@ export function AiInboxPage({ navigate }: { navigate: (to: string) => void }) {
       if (routed.next_action) await api("POST", routed.next_action, {});
       setCaptureSubject("");
       setCaptureText("");
+      setPhotoName(null);
+      if (fileRef.current) fileRef.current.value = "";
       setShowCapture(false);
       await load();
     } catch (err) { setError((err as Error).message); }
@@ -82,9 +87,21 @@ export function AiInboxPage({ navigate }: { navigate: (to: string) => void }) {
           <Button size="sm" variant={captureSource === "photo" ? "default" : "outline"} onClick={() => setCaptureSource("photo")}>Photo / paper</Button>
           <Button size="sm" variant={captureSource === "manual" ? "default" : "outline"} onClick={() => setCaptureSource("manual")}>Manual note</Button>
         </div>
+        {captureSource === "photo" && <div className="rounded-sm border border-dashed p-4">
+          <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden"
+            onChange={e => {
+              const file = e.target.files?.[0];
+              setPhotoName(file?.name ?? null);
+              if (file && !captureSubject.trim()) setCaptureSubject(file.name.replace(/\.[^.]+$/, ""));
+            }} />
+          <Button type="button" variant="outline" onClick={() => fileRef.current?.click()}>
+            <Camera className="h-4 w-4" /> {photoName ? "Change photo" : "Take or choose photo"}
+          </Button>
+          <span className="ml-3 text-xs text-muted-foreground">{photoName || "Image stays local for now; extraction/storage is the next connector."}</span>
+        </div>}
         <Input value={captureSubject} onChange={e => setCaptureSubject(e.target.value)} placeholder="Short title — e.g. Unit 204 maintenance slip" />
         <textarea value={captureText} onChange={e => setCaptureText(e.target.value)}
-          placeholder="Paste or type the text from the paper/photo for now. Image extraction will plug into this same intake path."
+          placeholder={captureSource === "photo" ? "Add any visible text or a quick note. Automatic image extraction will plug into this field next." : "Type the note or request."}
           className="min-h-24 w-full rounded-sm bg-card px-3 py-2 text-sm shadow-edge outline-none" />
         <div className="flex justify-end">
           <Button disabled={processingId === -1 || (!captureSubject.trim() && !captureText.trim())} onClick={() => void captureItem()}>
