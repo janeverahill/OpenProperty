@@ -614,6 +614,7 @@ const ReconcilePaymentInput = z.object({
   received_amount: z.number().positive(),
   received_at: z.string(),
   reference: z.string().min(1),
+  allow_partial: z.boolean().optional(),
   force_review: z.boolean().optional(),
   review_reason: z.string().optional().nullable(),
 });
@@ -689,7 +690,9 @@ app.post("/api/payment-reconciliations/evaluate", async (c) => {
        VALUES (?, ?, ?, 'payment', 'payment_reconciliation', ?, ?, ?, 'system')`,
       [charge.property_id, charge.unit_id, charge.primary_tenant_id, reconciliationId,
        `Payment automatically reconciled: ${received.toFixed(2)}`,
-       `Reference ${d.reference}; exact match to remaining charge.`],
+       matchType === "split"
+         ? `Reference ${d.reference}; partial payment applied with ${Math.abs(difference).toFixed(2)} remaining.`
+         : `Reference ${d.reference}; exact match to remaining charge.`],
     );
     if (d.inbox_item_id) await run("UPDATE inbox_items SET status = 'handled', handled_at = datetime('now') WHERE id = ?", [d.inbox_item_id]);
   } else {
