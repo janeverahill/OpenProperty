@@ -14,6 +14,7 @@ import { RentPage } from "./components/rent/rent-page";
 import { MaintenancePage } from "./components/maintenance/maintenance-page";
 import { ReviewQueuePage } from "./components/operations/review-queue-page";
 import { AiInboxPage } from "./components/operations/ai-inbox-page";
+import { DocumentsPage } from "./components/operations/documents-page";
 import { SettingsPage } from "./components/settings/settings-page";
 
 /**
@@ -40,6 +41,7 @@ const OPERATIONS: AppNavItem[] = [
   { id: "maintenance", label: "Maintenance", href: "/maintenance", icon: "list-checks", color: "orange" },
   { id: "inbox", label: "AI Inbox", href: "/inbox", icon: "inbox", color: "blue" },
   { id: "review", label: "Needs Attention", href: "/review", icon: "circle-alert", color: "red" },
+  { id: "documents", label: "Documents", href: "/documents", icon: "file-text", color: "violet" },
 ];
 const ADMIN: AppNavItem[] = [
   { id: "settings", label: "Settings", href: "/settings", icon: "settings" },
@@ -99,6 +101,7 @@ export function App() {
               {route.name === "maintenance" && <MaintenancePage />}
               {route.name === "inbox" && <AiInboxPage navigate={navigate} />}
               {route.name === "review" && <ReviewQueuePage />}
+              {route.name === "documents" && <DocumentsPage />}
               {route.name === "settings" && <SettingsPage />}
               {route.name === "not-found" && (
                 <Placeholder title="Not found" message="That page doesn't exist." />
