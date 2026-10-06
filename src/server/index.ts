@@ -826,7 +826,8 @@ app.get("/api/operations/self-check", (c) => {
     { name: "short unexplained", input: { expected: 919, received: 905 }, want: ["short", "needs_review"] },
     { name: "overpayment", input: { expected: 645, received: 650 }, want: ["over", "needs_review"] },
     { name: "exact but late", input: { expected: 942, received: 942, late: true }, want: ["late", "needs_review"] },
-    { name: "intentional split", input: { expected: 1144, received: 600, allow_partial: true }, want: ["split", "auto_matched"] },\n    { name: "late split stays visible", input: { expected: 1144, received: 600, allow_partial: true, late: true }, want: ["late", "needs_review"] },
+    { name: "intentional split", input: { expected: 1144, received: 600, allow_partial: true }, want: ["split", "auto_matched"] },
+    { name: "late split stays visible", input: { expected: 1144, received: 600, allow_partial: true, late: true }, want: ["late", "needs_review"] },
     { name: "special account", input: { expected: 1144, received: 1144, force_review: true }, want: ["special_rule", "needs_review"] },
   ].map(test => {
     const got = classifyPaymentCase(test.input);
