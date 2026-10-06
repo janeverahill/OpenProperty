@@ -1426,6 +1426,47 @@ app.post("/api/review-items/:id/resolve", async (c) => {
     }
   }
 
+  if (existing.review_type === "document" && parsed.data.status === "approved" && existing.inbox_item_id) {
+    const inbox = await get<any>("SELECT * FROM inbox_items WHERE id = ?", [existing.inbox_item_id]);
+    if (inbox) {
+      const prior = await get<any>("SELECT id FROM documents WHERE source_inbox_item_id = ? LIMIT 1", [inbox.id]);
+      if (!prior) {
+        let proposed: any = {};
+        try { proposed = existing.proposed_json ? JSON.parse(existing.proposed_json) : {}; } catch { proposed = {}; }
+        const title = proposed.title || inbox.subject || "Incoming document";
+        const category = proposed.category || "other";
+        const doc = await run(
+          `INSERT INTO documents
+           (property_id, unit_id, tenant_id, category, title, storage_ref, source_inbox_item_id, document_date, deadline_at, ai_summary)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [existing.property_id ?? inbox.property_id, existing.unit_id ?? inbox.unit_id, existing.tenant_id ?? inbox.tenant_id,
+           category, title, proposed.storage_ref ?? inbox.source_ref ?? null, inbox.id,
+           proposed.document_date ?? null, proposed.deadline_at ?? null, proposed.ai_summary ?? inbox.raw_text ?? null],
+        );
+        await run(
+          `INSERT INTO activity_events
+           (property_id, unit_id, tenant_id, event_type, entity_type, entity_id, summary, detail, source)
+           VALUES (?, ?, ?, 'document', 'document', ?, ?, ?, 'manager')`,
+          [existing.property_id ?? inbox.property_id, existing.unit_id ?? inbox.unit_id, existing.tenant_id ?? inbox.tenant_id,
+           doc.lastInsertRowid, "Document filed after review: " + title, parsed.data.resolution],
+        );
+        if (proposed.deadline_at) {
+          const deadlineExists = await get<any>(
+            "SELECT id FROM review_items WHERE inbox_item_id = ? AND review_type = 'deadline' AND status = 'open' LIMIT 1",
+            [inbox.id],
+          );
+          if (!deadlineExists) await run(
+            `INSERT INTO review_items
+             (inbox_item_id, property_id, unit_id, tenant_id, review_type, title, reason, proposed_action, confidence, risk_level)
+             VALUES (?, ?, ?, ?, 'deadline', ?, ?, 'Review deadline and schedule the required follow-up.', 1, 'high')`,
+            [inbox.id, existing.property_id ?? inbox.property_id, existing.unit_id ?? inbox.unit_id,
+             existing.tenant_id ?? inbox.tenant_id, "Deadline: " + title, "Document has a tracked deadline: " + proposed.deadline_at],
+          );
+        }
+      }
+    }
+  }
+
   // A payment exception is not complete just because the review card was clicked.
   // Keep the reconciliation record in sync so dashboards and audit history reflect
   // the manager's actual decision.
