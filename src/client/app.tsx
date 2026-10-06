@@ -13,6 +13,7 @@ import { LeasesPage } from "./components/leases/leases-page";
 import { RentPage } from "./components/rent/rent-page";
 import { MaintenancePage } from "./components/maintenance/maintenance-page";
 import { ReviewQueuePage } from "./components/operations/review-queue-page";
+import { AiInboxPage } from "./components/operations/ai-inbox-page";
 import { SettingsPage } from "./components/settings/settings-page";
 
 /**
@@ -37,6 +38,7 @@ const PORTFOLIO: AppNavItem[] = [
 const OPERATIONS: AppNavItem[] = [
   { id: "rent", label: "Rent", href: "/rent", icon: "dollar-sign", color: "amber" },
   { id: "maintenance", label: "Maintenance", href: "/maintenance", icon: "list-checks", color: "orange" },
+  { id: "inbox", label: "AI Inbox", href: "/inbox", icon: "inbox", color: "blue" },
   { id: "review", label: "Needs Attention", href: "/review", icon: "circle-alert", color: "red" },
 ];
 const ADMIN: AppNavItem[] = [
@@ -95,6 +97,7 @@ export function App() {
               {route.name === "leases" && <LeasesPage navigate={navigate} />}
               {route.name === "rent" && <RentPage />}
               {route.name === "maintenance" && <MaintenancePage />}
+              {route.name === "inbox" && <AiInboxPage navigate={navigate} />}
               {route.name === "review" && <ReviewQueuePage />}
               {route.name === "settings" && <SettingsPage />}
               {route.name === "not-found" && (
