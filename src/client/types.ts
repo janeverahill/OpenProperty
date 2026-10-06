@@ -288,3 +288,22 @@ export interface InboxItem {
   unit_name?: string | null;
   tenant_name?: string | null;
 }
+
+
+export interface DocumentRecord {
+  id: number;
+  property_id: number | null;
+  unit_id: number | null;
+  tenant_id: number | null;
+  category: string;
+  title: string;
+  storage_ref: string | null;
+  source_inbox_item_id: number | null;
+  document_date: string | null;
+  deadline_at: string | null;
+  ai_summary: string | null;
+  created_at: string;
+  property_name?: string | null;
+  unit_name?: string | null;
+  tenant_name?: string | null;
+}
