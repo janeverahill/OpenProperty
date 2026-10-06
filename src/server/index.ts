@@ -1106,6 +1106,47 @@ app.post("/api/inbox", async (c) => {
   return c.json({ inbox_item: row }, 201);
 });
 
+function classifyInboxText(item: { source_type?: string; subject?: string | null; raw_text?: string | null }) {
+  const text = ((item.subject ?? "") + " " + (item.raw_text ?? "")).toLowerCase();
+  const maintenanceTerms = ["leak", "leaking", "toilet", "sink", "faucet", "tap", "plumbing", "heat", "heating", "furnace",
+    "air conditioner", "a/c", "electrical", "outlet", "light", "broken", "repair", "maintenance", "dryer", "washer",
+    "appliance", "door", "window", "smoke detector", "alarm"];
+  const documentTerms = ["notice", "letter", "invoice", "inspection", "agreement", "lease", "form", "statement", "certificate",
+    "insurance", "contract", "quote", "estimate", "deadline", "due date", "renewal"];
+  const maintenanceHits = maintenanceTerms.filter(term => text.includes(term)).length;
+  const documentHits = documentTerms.filter(term => text.includes(term)).length;
+  if (maintenanceHits > documentHits && maintenanceHits > 0) {
+    return { item_type: "maintenance", confidence: Math.min(0.98, 0.82 + maintenanceHits * 0.05), reason: "Maintenance language detected." };
+  }
+  if (documentHits > maintenanceHits && documentHits > 0) {
+    return { item_type: "document", confidence: Math.min(0.98, 0.82 + documentHits * 0.05), reason: "Document language detected." };
+  }
+  if (item.source_type === "document") return { item_type: "document", confidence: 0.86, reason: "Document source type detected." };
+  return { item_type: "unknown", confidence: 0.5, reason: "Not enough evidence to classify automatically." };
+}
+
+app.post("/api/inbox/:id/classify", async (c) => {
+  const id = intParam(c.req.param("id"));
+  if (!id) return c.json({ error: "Invalid ID" }, 400);
+  const item = await get<any>("SELECT * FROM inbox_items WHERE id = ?", [id]);
+  if (!item) return c.json({ error: "Inbox item not found" }, 404);
+  if (item.status === "handled" || item.status === "dismissed") return c.json({ error: "Inbox item has already been resolved" }, 409);
+  const classification = classifyInboxText(item);
+  const status = classification.item_type === "unknown" ? "needs_review" : "classified";
+  await run("UPDATE inbox_items SET item_type = ?, confidence = ?, status = ? WHERE id = ?",
+    [classification.item_type, classification.confidence, status, id]);
+  if (classification.item_type === "unknown") {
+    const prior = await get<any>("SELECT id FROM review_items WHERE inbox_item_id = ? AND review_type = 'other' AND status = 'open' LIMIT 1", [id]);
+    if (!prior) await run(
+      `INSERT INTO review_items
+       (inbox_item_id, property_id, unit_id, tenant_id, review_type, title, reason, proposed_action, confidence, risk_level)
+       VALUES (?, ?, ?, ?, 'other', 'Inbox item needs classification', ?, 'Choose the correct workflow before processing.', ?, 'normal')`,
+      [id, item.property_id, item.unit_id, item.tenant_id, classification.reason, classification.confidence],
+    );
+  }
+  return c.json({ classification: { ...classification, status } });
+});
+
 const ProcessInboxMaintenanceInput = z.object({
   priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
   force_review: z.boolean().optional(),
