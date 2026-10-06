@@ -734,6 +734,72 @@ app.get("/api/payment-reconciliations", async (c) => {
   return c.json({ payment_reconciliations: rows });
 });
 
+// ── Documents and deadlines ───────────────────────────────────────
+
+const DocumentInput = z.object({
+  property_id: z.number().int().optional().nullable(),
+  unit_id: z.number().int().optional().nullable(),
+  tenant_id: z.number().int().optional().nullable(),
+  category: z.string().min(1).default("other"),
+  title: z.string().min(1),
+  storage_ref: z.string().optional().nullable(),
+  source_inbox_item_id: z.number().int().optional().nullable(),
+  document_date: z.string().optional().nullable(),
+  deadline_at: z.string().optional().nullable(),
+  ai_summary: z.string().optional().nullable(),
+});
+
+app.get("/api/documents", async (c) => {
+  const rows = await query(
+    `SELECT d.*, p.name property_name, u.name unit_name,
+       t.first_name || ' ' || t.last_name tenant_name
+     FROM documents d
+     LEFT JOIN properties p ON p.id = d.property_id
+     LEFT JOIN units u ON u.id = d.unit_id
+     LEFT JOIN tenants t ON t.id = d.tenant_id
+     ORDER BY COALESCE(d.deadline_at, d.document_date, d.created_at) DESC, d.id DESC
+     LIMIT 500`,
+  ).catch(() => []);
+  return c.json({ documents: rows });
+});
+
+app.post("/api/documents", async (c) => {
+  const parsed = await parseJson(c, DocumentInput);
+  if (!parsed.ok) return c.json({ error: parsed.error }, 400);
+  const d = parsed.data;
+  const result = await run(
+    `INSERT INTO documents
+      (property_id, unit_id, tenant_id, category, title, storage_ref, source_inbox_item_id, document_date, deadline_at, ai_summary)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [d.property_id ?? null, d.unit_id ?? null, d.tenant_id ?? null, d.category, d.title,
+     d.storage_ref ?? null, d.source_inbox_item_id ?? null, d.document_date ?? null,
+     d.deadline_at ?? null, d.ai_summary ?? null],
+  );
+  const documentId = result.lastInsertRowid;
+  await run(
+    `INSERT INTO activity_events
+      (property_id, unit_id, tenant_id, event_type, entity_type, entity_id, summary, detail, source)
+     VALUES (?, ?, ?, 'document', 'document', ?, ?, ?, 'manager')`,
+    [d.property_id ?? null, d.unit_id ?? null, d.tenant_id ?? null, documentId,
+     "Document filed: " + d.title, d.ai_summary ?? null],
+  );
+  if (d.source_inbox_item_id) {
+    await run("UPDATE inbox_items SET item_type = 'document', status = 'handled', handled_at = datetime('now') WHERE id = ?", [d.source_inbox_item_id]);
+  }
+  if (d.deadline_at) {
+    await run(
+      `INSERT INTO review_items
+        (inbox_item_id, property_id, unit_id, tenant_id, review_type, title, reason, proposed_action, confidence, risk_level)
+       VALUES (?, ?, ?, ?, 'deadline', ?, ?, ?, 1, 'high')`,
+      [d.source_inbox_item_id ?? null, d.property_id ?? null, d.unit_id ?? null, d.tenant_id ?? null,
+       "Deadline — " + d.title, "This document contains a tracked deadline: " + d.deadline_at,
+       "Review the document and confirm the required follow-up before the deadline."],
+    );
+  }
+  const row = await get("SELECT * FROM documents WHERE id = ?", [documentId]);
+  return c.json({ document: row }, 201);
+});
+
 // ── Operations self-check ─────────────────────────────────────────
 // Pure decision-table tests for the automation rules. This endpoint never
 // writes portfolio data; it is safe to run repeatedly while hardening flows.
