@@ -268,3 +268,23 @@ export interface PaymentReconciliation {
   unit_name?: string | null;
   property_name?: string | null;
 }
+
+export interface InboxItem {
+  id: number;
+  source_type: "email" | "photo" | "document" | "manual" | "integration";
+  source_ref: string | null;
+  property_id: number | null;
+  unit_id: number | null;
+  tenant_id: number | null;
+  item_type: "payment" | "maintenance" | "document" | "message" | "unknown";
+  subject: string | null;
+  raw_text: string | null;
+  confidence: number | null;
+  status: "new" | "classified" | "needs_review" | "handled" | "dismissed";
+  received_at: string;
+  handled_at: string | null;
+  created_at: string;
+  property_name?: string | null;
+  unit_name?: string | null;
+  tenant_name?: string | null;
+}
