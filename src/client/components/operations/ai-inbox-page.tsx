@@ -25,7 +25,8 @@ export function AiInboxPage({ navigate }: { navigate: (to: string) => void }) {
   async function classifyItem(item: InboxItem) {
     try {
       setProcessingId(item.id);
-      await api("POST", `/api/inbox/${item.id}/classify`, {});
+      const result = await api<{ routed: string; next_action?: string | null }>("POST", `/api/inbox/${item.id}/auto-process`, {});
+      if (result.next_action) await api("POST", result.next_action, {});
       await load();
     } catch (err) { setError((err as Error).message); }
     finally { setProcessingId(null); }
@@ -78,7 +79,7 @@ export function AiInboxPage({ navigate }: { navigate: (to: string) => void }) {
               <div className="flex gap-2">
                 {item.status === "new" && <Button size="sm" disabled={processingId === item.id}
                   onClick={() => void classifyItem(item)}>
-                  <Sparkles className="h-3.5 w-3.5" /> Classify
+                  <Sparkles className="h-3.5 w-3.5" /> Auto-process
                 </Button>}
                 <Button size="sm" variant="outline" disabled={processingId === item.id}
                   onClick={() => void processItem(item, "maintenance")}>
