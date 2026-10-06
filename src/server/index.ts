@@ -1542,6 +1542,85 @@ app.post("/api/review-items/:id/resolve", async (c) => {
   return c.json({ review_item: row });
 });
 
+const UnitAssetInput = z.object({
+  unit_id: z.number().int().positive(),
+  asset_type: z.string().min(1),
+  description: z.string().optional().nullable(),
+  make: z.string().optional().nullable(),
+  model: z.string().optional().nullable(),
+  serial_number: z.string().optional().nullable(),
+  installed_at: z.string().optional().nullable(),
+  expected_life_years: z.number().int().positive().optional().nullable(),
+  replacement_cost: z.number().nonnegative().optional().nullable(),
+  status: z.enum(["active", "replaced", "removed", "needs_attention"]).optional(),
+  notes: z.string().optional().nullable(),
+});
+
+app.get("/api/unit-assets", async (c) => {
+  const unitId = intParam(c.req.query("unit_id"));
+  const rows = await query(
+    `SELECT a.*, u.name AS unit_name, p.name AS property_name
+     FROM unit_assets a
+     JOIN units u ON u.id = a.unit_id
+     JOIN properties p ON p.id = u.property_id
+     ${unitId ? "WHERE a.unit_id = ?" : ""}
+     ORDER BY a.installed_at DESC, a.created_at DESC, a.id DESC`,
+    unitId ? [unitId] : [],
+  );
+  return c.json({ unit_assets: rows });
+});
+
+app.post("/api/unit-assets", async (c) => {
+  const parsed = await parseJson(c, UnitAssetInput);
+  if (!parsed.ok) return c.json({ error: parsed.error }, 400);
+  const d = parsed.data;
+  const unit = await get<any>("SELECT id, property_id FROM units WHERE id = ?", [d.unit_id]);
+  if (!unit) return c.json({ error: "Unit not found" }, 404);
+  const result = await run(
+    `INSERT INTO unit_assets
+     (unit_id, asset_type, description, make, model, serial_number, installed_at, expected_life_years, replacement_cost, status, notes)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [d.unit_id, d.asset_type, d.description ?? null, d.make ?? null, d.model ?? null,
+     d.serial_number ?? null, d.installed_at ?? null, d.expected_life_years ?? null,
+     d.replacement_cost ?? null, d.status ?? "active", d.notes ?? null],
+  );
+  await run(
+    `INSERT INTO activity_events
+     (property_id, unit_id, event_type, entity_type, entity_id, summary, detail, source)
+     VALUES (?, ?, 'asset', 'unit_asset', ?, ?, ?, 'manager')`,
+    [unit.property_id, d.unit_id, result.lastInsertRowid,
+     "Unit asset added: " + d.asset_type, d.description ?? d.notes ?? null],
+  );
+  const row = await get("SELECT * FROM unit_assets WHERE id = ?", [result.lastInsertRowid]);
+  return c.json({ unit_asset: row }, 201);
+});
+
+app.put("/api/unit-assets/:id", async (c) => {
+  const id = intParam(c.req.param("id"));
+  if (!id) return c.json({ error: "Invalid ID" }, 400);
+  const parsed = await parseJson(c, UnitAssetInput);
+  if (!parsed.ok) return c.json({ error: parsed.error }, 400);
+  const existing = await get<any>("SELECT * FROM unit_assets WHERE id = ?", [id]);
+  if (!existing) return c.json({ error: "Asset not found" }, 404);
+  const d = parsed.data;
+  await run(
+    `UPDATE unit_assets SET unit_id=?, asset_type=?, description=?, make=?, model=?, serial_number=?,
+     installed_at=?, expected_life_years=?, replacement_cost=?, status=?, notes=? WHERE id=?`,
+    [d.unit_id, d.asset_type, d.description ?? null, d.make ?? null, d.model ?? null,
+     d.serial_number ?? null, d.installed_at ?? null, d.expected_life_years ?? null,
+     d.replacement_cost ?? null, d.status ?? "active", d.notes ?? null, id],
+  );
+  const unit = await get<any>("SELECT property_id FROM units WHERE id = ?", [d.unit_id]);
+  await run(
+    `INSERT INTO activity_events
+     (property_id, unit_id, event_type, entity_type, entity_id, summary, detail, source)
+     VALUES (?, ?, 'asset', 'unit_asset', ?, ?, ?, 'manager')`,
+    [unit?.property_id ?? null, d.unit_id, id, "Unit asset updated: " + d.asset_type, d.notes ?? null],
+  );
+  const row = await get("SELECT * FROM unit_assets WHERE id = ?", [id]);
+  return c.json({ unit_asset: row });
+});
+
 app.get("/api/activity", async (c) => {
   const unitId = intParam(c.req.query("unit_id"));
   const tenantId = intParam(c.req.query("tenant_id"));
