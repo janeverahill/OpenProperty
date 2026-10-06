@@ -6,6 +6,21 @@ import type { ReviewItem } from "@/types";
 import { Card } from "@/components/ui/card";
 import { PageShell } from "@/components/page-shell";
 
+function proposalDetails(item: ReviewItem) {
+  if (!item.proposed_json) return [] as Array<[string, string]>;
+  try {
+    const value = JSON.parse(item.proposed_json) as Record<string, unknown>;
+    const labels: Record<string, string> = {
+      title: "Title", priority: "Priority", category: "Category",
+      document_date: "Document date", deadline_at: "Deadline",
+      description: "Description", ai_summary: "Summary",
+    };
+    return Object.entries(value)
+      .filter(([key, val]) => key !== "storage_ref" && val != null && String(val).trim() !== "")
+      .map(([key, val]) => [labels[key] || key.replaceAll("_", " "), String(val)] as [string, string]);
+  } catch { return [] as Array<[string, string]>; }
+}
+
 export function ReviewQueuePage() {
   const { setError } = useApp();
   const [items, setItems] = useState<ReviewItem[]>([]);
@@ -50,6 +65,15 @@ export function ReviewQueuePage() {
               {item.confidence != null ? ` · AI confidence ${Math.round(item.confidence * 100)}%` : ""}
             </p>
             {item.proposed_action && <p className="mt-3 text-sm"><span className="font-medium">Suggested:</span> {item.proposed_action}</p>}
+            {proposalDetails(item).length > 0 && <div className="mt-3 rounded-md border bg-muted/30 p-3">
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">What will happen if you approve</div>
+              <dl className="grid gap-2 text-sm sm:grid-cols-2">
+                {proposalDetails(item).map(([label, value]) => <div key={label} className={label === "Description" || label === "Summary" ? "sm:col-span-2" : ""}>
+                  <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
+                  <dd className="whitespace-pre-wrap">{value}</dd>
+                </div>)}
+              </dl>
+            </div>}
           </div>
           <div className="flex shrink-0 gap-2">
             <button disabled={working === item.id} onClick={() => void resolve(item, "dismissed")}
