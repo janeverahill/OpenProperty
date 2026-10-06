@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Receipt, Sparkles } from "lucide-react";
 import { useApp } from "@/context";
+import { api } from "@/api";
 import { addMonths, cn, currentPeriod, formatDate, formatMoney, formatPeriod } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PaymentDialog } from "./payment-dialog";
-import type { ChargeStatus, RentCharge } from "@/types";
+import type { ChargeStatus, RentCharge, PaymentReconciliation } from "@/types";
 import { PageShell } from "@/components/page-shell";
 
 const STATUS_TONE: Record<ChargeStatus, string> = {
@@ -25,12 +26,17 @@ export function RentPage() {
   const [loading, setLoading] = useState(true);
   const [paymentTarget, setPaymentTarget] = useState<RentCharge | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [reconciliations, setReconciliations] = useState<PaymentReconciliation[]>([]);
 
   async function load() {
     try {
       setLoading(true);
-      const list = await app.listCharges(period);
+      const [list, rec] = await Promise.all([
+        app.listCharges(period),
+        api<{ payment_reconciliations: PaymentReconciliation[] }>("GET", "/api/payment-reconciliations"),
+      ]);
       setCharges(list);
+      setReconciliations(rec.payment_reconciliations);
     } catch (err) {
       app.setError((err as Error).message);
     } finally {
@@ -113,6 +119,41 @@ export function RentPage() {
             tone={totals.overdue > 0 ? "danger" : "default"}
           />
         </section>
+
+        <Card className="p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold">Payment reconciliation</h2>
+              <p className="text-xs text-muted-foreground">Routine matches are handled automatically; exceptions stay visible for review.</p>
+            </div>
+            <Badge variant="outline">{reconciliations.filter(r => r.status === "needs_review").length} need review</Badge>
+          </div>
+          {reconciliations.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No imported payments have been reconciled yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {reconciliations.slice(0, 6).map((r) => (
+                <div key={r.id} className="flex items-center justify-between gap-4 rounded-md border p-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{[r.property_name, r.unit_name].filter(Boolean).join(" · ") || "Unassigned payment"}</p>
+                    <p className="text-xs text-muted-foreground">{r.reference} · {formatDate(r.received_at)}</p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-3 text-right">
+                    <div>
+                      <div className="text-sm font-medium tabular-nums">{formatMoney(r.received_amount, app.settings.currency)}</div>
+                      {r.difference !== 0 && <div className="text-xs text-muted-foreground">Difference {formatMoney(r.difference, app.settings.currency)}</div>}
+                    </div>
+                    <span className={cn("inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold capitalize",
+                      r.status === "auto_matched" ? "bg-success-tint text-success" :
+                      r.status === "needs_review" ? "bg-warning-tint text-warning" : "bg-muted text-muted-foreground")}>
+                      {r.match_type.replace("_", " ")}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
 
         {loading ? (
           <Card className="divide-y divide-border overflow-hidden" role="status" aria-label="Loading rent charges">
