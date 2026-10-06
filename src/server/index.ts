@@ -1147,6 +1147,46 @@ app.post("/api/inbox/:id/classify", async (c) => {
   return c.json({ classification: { ...classification, status } });
 });
 
+app.post("/api/inbox/:id/auto-process", async (c) => {
+  const id = intParam(c.req.param("id"));
+  if (!id) return c.json({ error: "Invalid ID" }, 400);
+  const item = await get<any>("SELECT * FROM inbox_items WHERE id = ?", [id]);
+  if (!item) return c.json({ error: "Inbox item not found" }, 404);
+  if (item.status === "handled" || item.status === "dismissed") return c.json({ error: "Inbox item has already been resolved" }, 409);
+
+  const classification = item.item_type === "unknown" || item.status === "new"
+    ? classifyInboxText(item)
+    : { item_type: item.item_type, confidence: Number(item.confidence ?? 0.5), reason: "Existing classification used." };
+
+  if (classification.item_type === "unknown" || classification.confidence < 0.8) {
+    await run("UPDATE inbox_items SET item_type = ?, confidence = ?, status = 'needs_review' WHERE id = ?",
+      [classification.item_type, classification.confidence, id]);
+    const prior = await get<any>("SELECT id FROM review_items WHERE inbox_item_id = ? AND review_type = 'other' AND status = 'open' LIMIT 1", [id]);
+    if (!prior) await run(
+      `INSERT INTO review_items
+       (inbox_item_id, property_id, unit_id, tenant_id, review_type, title, reason, proposed_action, confidence, risk_level)
+       VALUES (?, ?, ?, ?, 'other', 'Inbox item needs classification', ?, 'Choose the correct workflow before processing.', ?, 'normal')`,
+      [id, item.property_id, item.unit_id, item.tenant_id, classification.reason, classification.confidence],
+    );
+    return c.json({ routed: "review", classification }, 202);
+  }
+
+  await run("UPDATE inbox_items SET item_type = ?, confidence = ?, status = 'classified' WHERE id = ?",
+    [classification.item_type, classification.confidence, id]);
+
+  // Keep routing explicit: the same processing endpoints remain the source of
+  // truth for safety checks, assignment checks and final record creation.
+  return c.json({
+    routed: classification.item_type,
+    classification,
+    next_action: classification.item_type === "maintenance"
+      ? `/api/inbox/${id}/process-maintenance`
+      : classification.item_type === "document"
+        ? `/api/inbox/${id}/process-document`
+        : null,
+  });
+});
+
 const ProcessInboxMaintenanceInput = z.object({
   priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
   force_review: z.boolean().optional(),
