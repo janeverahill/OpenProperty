@@ -645,23 +645,27 @@ app.post("/api/payment-reconciliations/evaluate", async (c) => {
   const paidDate = d.received_at.slice(0, 10);
   const late = paidDate > String(charge.due_date).slice(0, 10);
 
-  let matchType = "exact";
-  let status = "auto_matched";
-  let confidence = 0.99;
-  let reason = "";
-  if (d.force_review) {
-    matchType = "special_rule"; status = "needs_review"; confidence = 1;
-    reason = d.review_reason || "This account is configured for manual review.";
-  } else if (difference < 0) {
-    matchType = "short"; status = "needs_review"; confidence = 1;
-    reason = `Payment is ${Math.abs(difference).toFixed(2)} short of the remaining charge.`;
-  } else if (difference > 0) {
-    matchType = "over"; status = "needs_review"; confidence = 1;
-    reason = `Payment is ${difference.toFixed(2)} above the remaining charge.`;
-  } else if (late) {
-    matchType = "late"; status = "needs_review"; confidence = 1;
-    reason = `Amount matches, but payment was received after the due date (${charge.due_date}).`;
-  }
+  const classified = classifyPaymentCase({
+    expected: expectedRemaining,
+    received,
+    late,
+    force_review: d.force_review,
+    allow_partial: d.allow_partial,
+  });
+  const matchType = classified.match_type;
+  const status = classified.status;
+  const confidence = matchType === "split" ? 0.98 : 1;
+  const reason = matchType === "special_rule"
+    ? (d.review_reason || "This account is configured for manual review.")
+    : matchType === "late"
+      ? `Payment was received after the due date (${charge.due_date}).`
+      : matchType === "short"
+        ? `Payment is ${Math.abs(difference).toFixed(2)} short of the remaining charge.`
+        : matchType === "over"
+          ? `Payment is ${difference.toFixed(2)} above the remaining charge.`
+          : matchType === "split"
+            ? "Partial payment accepted; the remaining balance stays open for a later payment."
+            : "";
 
   const rr = await run(
     `INSERT INTO payment_reconciliations
@@ -743,10 +747,11 @@ function classifyPaymentCase(input: {
 }) {
   const difference = input.received - input.expected;
   if (input.force_review) return { match_type: "special_rule", status: "needs_review" };
+  // Due-date exceptions remain visible even when partial payments are normally allowed.
+  if (input.late) return { match_type: "late", status: "needs_review" };
   if (difference < 0 && input.allow_partial) return { match_type: "split", status: "auto_matched" };
   if (difference < 0) return { match_type: "short", status: "needs_review" };
   if (difference > 0) return { match_type: "over", status: "needs_review" };
-  if (input.late) return { match_type: "late", status: "needs_review" };
   return { match_type: "exact", status: "auto_matched" };
 }
 
@@ -756,7 +761,7 @@ app.get("/api/operations/self-check", (c) => {
     { name: "short unexplained", input: { expected: 919, received: 905 }, want: ["short", "needs_review"] },
     { name: "overpayment", input: { expected: 645, received: 650 }, want: ["over", "needs_review"] },
     { name: "exact but late", input: { expected: 942, received: 942, late: true }, want: ["late", "needs_review"] },
-    { name: "intentional split", input: { expected: 1144, received: 600, allow_partial: true }, want: ["split", "auto_matched"] },
+    { name: "intentional split", input: { expected: 1144, received: 600, allow_partial: true }, want: ["split", "auto_matched"] },\n    { name: "late split stays visible", input: { expected: 1144, received: 600, allow_partial: true, late: true }, want: ["late", "needs_review"] },
     { name: "special account", input: { expected: 1144, received: 1144, force_review: true }, want: ["special_rule", "needs_review"] },
   ].map(test => {
     const got = classifyPaymentCase(test.input);
