@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, Inbox, CircleAlert, FileText, Wrench } from "lucide-react";
+import { CheckCircle2, Inbox, CircleAlert, FileText, Wrench, Sparkles } from "lucide-react";
 import { api } from "@/api";
 import { useApp } from "@/context";
 import type { InboxItem } from "@/types";
@@ -21,6 +21,15 @@ export function AiInboxPage({ navigate }: { navigate: (to: string) => void }) {
     finally { setLoading(false); }
   }, [setError]);
   useEffect(() => { void load(); }, [load]);
+
+  async function classifyItem(item: InboxItem) {
+    try {
+      setProcessingId(item.id);
+      await api("POST", `/api/inbox/${item.id}/classify`, {});
+      await load();
+    } catch (err) { setError((err as Error).message); }
+    finally { setProcessingId(null); }
+  }
 
   async function processItem(item: InboxItem, kind: "maintenance" | "document") {
     try {
@@ -67,6 +76,10 @@ export function AiInboxPage({ navigate }: { navigate: (to: string) => void }) {
             <span className="rounded-full border px-2 py-0.5 text-[11px] font-semibold capitalize">{item.status.replace("_", " ")}</span>
             {(item.status === "new" || item.status === "classified") && (
               <div className="flex gap-2">
+                {item.status === "new" && <Button size="sm" disabled={processingId === item.id}
+                  onClick={() => void classifyItem(item)}>
+                  <Sparkles className="h-3.5 w-3.5" /> Classify
+                </Button>}
                 <Button size="sm" variant="outline" disabled={processingId === item.id}
                   onClick={() => void processItem(item, "maintenance")}>
                   <Wrench className="h-3.5 w-3.5" /> Maintenance
