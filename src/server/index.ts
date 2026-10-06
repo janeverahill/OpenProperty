@@ -1177,6 +1177,85 @@ app.post("/api/inbox/:id/process-maintenance", async (c) => {
   return c.json({ needs_review: false, work_order: row }, 201);
 });
 
+const ProcessInboxDocumentInput = z.object({
+  category: z.string().min(1).optional(),
+  title: z.string().min(1).optional(),
+  document_date: z.string().optional().nullable(),
+  deadline_at: z.string().optional().nullable(),
+  ai_summary: z.string().optional().nullable(),
+  storage_ref: z.string().optional().nullable(),
+  force_review: z.boolean().optional(),
+});
+
+app.post("/api/inbox/:id/process-document", async (c) => {
+  const id = intParam(c.req.param("id"));
+  if (!id) return c.json({ error: "Invalid ID" }, 400);
+  const parsed = await parseJson(c, ProcessInboxDocumentInput);
+  if (!parsed.ok) return c.json({ error: parsed.error }, 400);
+  const item = await get<any>("SELECT * FROM inbox_items WHERE id = ?", [id]);
+  if (!item) return c.json({ error: "Inbox item not found" }, 404);
+  if (item.status === "handled" || item.status === "dismissed") return c.json({ error: "Inbox item has already been resolved" }, 409);
+
+  const d = parsed.data;
+  const title = d.title || item.subject || "Incoming document";
+  const category = d.category || "other";
+  const lowConfidence = item.confidence != null && Number(item.confidence) < 0.9;
+  const missingAssignment = !item.property_id && !item.unit_id && !item.tenant_id;
+  const shouldReview = Boolean(d.force_review || lowConfidence || missingAssignment);
+
+  await run("UPDATE inbox_items SET item_type = 'document', status = ? WHERE id = ?",
+    [shouldReview ? "needs_review" : "classified", id]);
+
+  if (shouldReview) {
+    const reasons = [
+      missingAssignment ? "Property, unit or tenant could not be confirmed." : null,
+      lowConfidence ? "AI confidence is below the automatic-processing threshold." : null,
+      d.force_review ? "Manual review was requested." : null,
+    ].filter(Boolean).join(" ");
+    const existingReview = await get<any>(
+      "SELECT id FROM review_items WHERE inbox_item_id = ? AND review_type = 'document' AND status = 'open' LIMIT 1", [id]);
+    if (!existingReview) {
+      await run(
+        `INSERT INTO review_items
+          (inbox_item_id, property_id, unit_id, tenant_id, review_type, title, reason, proposed_action, proposed_json, confidence, risk_level)
+         VALUES (?, ?, ?, ?, 'document', ?, ?, ?, ?, ?, 'normal')`,
+        [id, item.property_id, item.unit_id, item.tenant_id, "Document needs review — " + title,
+         reasons || "Review this document before filing it.",
+         "Confirm the document details, assignment and any deadline before filing.",
+         JSON.stringify({ category, title, document_date: d.document_date ?? null, deadline_at: d.deadline_at ?? null,
+           ai_summary: d.ai_summary ?? item.raw_text ?? null, storage_ref: d.storage_ref ?? item.source_ref ?? null }),
+         item.confidence ?? null],
+      );
+    }
+    return c.json({ needs_review: true, reason: reasons }, 202);
+  }
+
+  const doc = await run(
+    `INSERT INTO documents
+      (property_id, unit_id, tenant_id, category, title, storage_ref, source_inbox_item_id, document_date, deadline_at, ai_summary)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [item.property_id, item.unit_id, item.tenant_id, category, title, d.storage_ref ?? item.source_ref ?? null,
+     id, d.document_date ?? null, d.deadline_at ?? null, d.ai_summary ?? item.raw_text ?? null],
+  );
+  await run("UPDATE inbox_items SET status = 'handled', handled_at = datetime('now') WHERE id = ?", [id]);
+  await run(
+    "INSERT INTO activity_events (property_id, unit_id, tenant_id, event_type, entity_type, entity_id, summary, detail, source) VALUES (?, ?, ?, 'document', 'document', ?, ?, ?, 'ai')",
+    [item.property_id, item.unit_id, item.tenant_id, doc.lastInsertRowid, "Document automatically filed: " + title, d.ai_summary ?? item.raw_text ?? null],
+  );
+  if (d.deadline_at) {
+    await run(
+      `INSERT INTO review_items
+        (inbox_item_id, property_id, unit_id, tenant_id, review_type, title, reason, proposed_action, confidence, risk_level)
+       VALUES (?, ?, ?, ?, 'deadline', ?, ?, ?, 1, 'high')`,
+      [id, item.property_id, item.unit_id, item.tenant_id, "Deadline — " + title,
+       "This document contains a tracked deadline: " + d.deadline_at,
+       "Review the document and confirm the required follow-up before the deadline."],
+    );
+  }
+  const row = await get("SELECT * FROM documents WHERE id = ?", [doc.lastInsertRowid]);
+  return c.json({ needs_review: false, document: row }, 201);
+});
+
 const ReviewInput = z.object({
   inbox_item_id: z.number().int().optional().nullable(),
   property_id: z.number().int().optional().nullable(),
