@@ -227,6 +227,24 @@ export interface OperationsSummary {
   payment_exceptions: number;
   open_work_orders: number;
 }
+export interface UnitAsset {
+  id: number;
+  unit_id: number;
+  asset_type: string;
+  description: string | null;
+  make: string | null;
+  model: string | null;
+  serial_number: string | null;
+  installed_at: string | null;
+  expected_life_years: number | null;
+  replacement_cost: number | null;
+  status: "active" | "replaced" | "removed" | "needs_attention";
+  notes: string | null;
+  created_at: string;
+  unit_name?: string | null;
+  property_name?: string | null;
+}
+
 export interface ReviewItem {
   id: number;
   inbox_item_id: number | null;
