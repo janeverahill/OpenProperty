@@ -747,7 +747,6 @@ function classifyPaymentCase(input: {
 }) {
   const difference = input.received - input.expected;
   if (input.force_review) return { match_type: "special_rule", status: "needs_review" };
-  // Due-date exceptions remain visible even when partial payments are normally allowed.
   if (input.late) return { match_type: "late", status: "needs_review" };
   if (difference < 0 && input.allow_partial) return { match_type: "split", status: "auto_matched" };
   if (difference < 0) return { match_type: "short", status: "needs_review" };
