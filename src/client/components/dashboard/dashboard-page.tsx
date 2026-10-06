@@ -11,7 +11,7 @@ import {
 import { useApp } from "@/context";
 import { api } from "@/api";
 import { cn, daysBetween, formatDate, formatMoney, toIsoDate } from "@/lib/utils";
-import type { DashboardSummary } from "@/types";
+import type { DashboardSummary, OperationsSummary } from "@/types";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { PageShell } from "@/components/page-shell";
@@ -19,6 +19,7 @@ import { PageShell } from "@/components/page-shell";
 export function DashboardPage({ navigate }: { navigate: (to: string) => void }) {
   const { settings, setError } = useApp();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [operations, setOperations] = useState<OperationsSummary | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -26,8 +27,14 @@ export function DashboardPage({ navigate }: { navigate: (to: string) => void }) 
     (async () => {
       try {
         setLoading(true);
-        const data = await api<DashboardSummary>("GET", "/api/dashboard/summary");
-        if (!cancelled) setSummary(data);
+        const [data, ops] = await Promise.all([
+          api<DashboardSummary>("GET", "/api/dashboard/summary"),
+          api<OperationsSummary>("GET", "/api/operations/summary"),
+        ]);
+        if (!cancelled) {
+          setSummary(data);
+          setOperations(ops);
+        }
       } catch (err) {
         if (!cancelled) setError((err as Error).message);
       } finally {
@@ -50,6 +57,31 @@ export function DashboardPage({ navigate }: { navigate: (to: string) => void }) 
       title="Dashboard"
       meta={`Snapshot of ${new Date().toLocaleDateString(undefined, { month: "long", year: "numeric" })}`}
     >
+
+        {operations && (
+          <Card className="p-5">
+            <div className="mb-4 flex items-center justify-between gap-4">
+              <div>
+                <h2 className="text-sm font-semibold">AI operations</h2>
+                <p className="text-xs text-muted-foreground">Manage by exception — routine work stays out of your way.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => navigate("/review")}
+                className="text-xs font-medium text-primary hover:underline"
+              >
+                Open Needs Attention
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+              <OpsStat label="Needs attention" value={operations.needs_attention} tone={operations.needs_attention ? "danger" : "default"} />
+              <OpsStat label="Inbox waiting" value={operations.inbox_unprocessed} tone={operations.inbox_unprocessed ? "warn" : "default"} />
+              <OpsStat label="Handled today" value={operations.handled_today} tone="positive" />
+              <OpsStat label="Payment exceptions" value={operations.payment_exceptions} tone={operations.payment_exceptions ? "warn" : "default"} />
+              <OpsStat label="Open work orders" value={operations.open_work_orders} />
+            </div>
+          </Card>
+        )}
 
         <section className="grid grid-cols-2 gap-4 md:grid-cols-4">
           <KpiCard
@@ -339,4 +371,22 @@ function StatusBadge({ status }: { status: string }) {
     cancelled: "outline",
   };
   return <Badge variant={(map[status] ?? "secondary") as never} className="capitalize">{status.replace("_", " ")}</Badge>;
+}
+
+function OpsStat({ label, value, tone = "default" }: {
+  label: string;
+  value: number;
+  tone?: "default" | "positive" | "warn" | "danger";
+}) {
+  return (
+    <div className="rounded-md border bg-background px-3 py-3">
+      <div className={cn(
+        "text-xl font-semibold tabular-nums",
+        tone === "positive" && "text-success",
+        tone === "warn" && "text-warning",
+        tone === "danger" && "text-destructive",
+      )}>{value}</div>
+      <div className="mt-1 text-xs text-muted-foreground">{label}</div>
+    </div>
+  );
 }
