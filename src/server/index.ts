@@ -1235,6 +1235,21 @@ app.post("/api/inbox/:id/process-maintenance", async (c) => {
          reasons || "Review this maintenance request before creating a work order.",
          "Confirm the unit, urgency and work-order details.", item.confidence ?? null, highRisk ? "high" : "normal"],
       );
+      const createdReview = await get<any>(
+        "SELECT id FROM review_items WHERE inbox_item_id = ? AND review_type = 'maintenance' AND status = 'open' ORDER BY id DESC LIMIT 1",
+        [id],
+      );
+      if (createdReview) {
+        await run("UPDATE review_items SET proposed_json = ? WHERE id = ?", [
+          JSON.stringify({ title, description: item.raw_text ?? null, priority }),
+          createdReview.id,
+        ]);
+      }
+    } else {
+      await run("UPDATE review_items SET proposed_json = ? WHERE id = ?", [
+        JSON.stringify({ title, description: item.raw_text ?? null, priority }),
+        existingReview.id,
+      ]);
     }
     return c.json({ needs_review: true, reason: reasons }, 202);
   }
@@ -1408,12 +1423,14 @@ app.post("/api/review-items/:id/resolve", async (c) => {
       const sourceNote = "AI Inbox item #" + inbox.id;
       const prior = await get<any>("SELECT id FROM work_orders WHERE notes LIKE ? LIMIT 1", ["%" + sourceNote + "%"]);
       if (!prior) {
-        const priority = existing.risk_level === "high" ? "urgent" : "normal";
+        let proposed: any = {};
+        try { proposed = existing.proposed_json ? JSON.parse(existing.proposed_json) : {}; } catch { proposed = {}; }
+        const priority = proposed.priority || (existing.risk_level === "high" ? "urgent" : "normal");
         const work = await run(
           "INSERT INTO work_orders (property_id, unit_id, tenant_id, title, description, priority, status, notes) VALUES (?, ?, ?, ?, ?, ?, 'open', ?)",
           [existing.property_id ?? inbox.property_id, existing.unit_id ?? inbox.unit_id,
-           existing.tenant_id ?? inbox.tenant_id, inbox.subject || "Maintenance request",
-           inbox.raw_text ?? null, priority, "Created after manager review of " + sourceNote],
+           existing.tenant_id ?? inbox.tenant_id, proposed.title || inbox.subject || "Maintenance request",
+           proposed.description ?? inbox.raw_text ?? null, priority, "Created after manager review of " + sourceNote],
         );
         await run(
           "INSERT INTO activity_events (property_id, unit_id, tenant_id, event_type, entity_type, entity_id, summary, detail, source) VALUES (?, ?, ?, 'maintenance', 'work_order', ?, ?, ?, 'manager')",
