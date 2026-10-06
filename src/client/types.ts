@@ -237,6 +237,7 @@ export interface ReviewItem {
   title: string;
   reason: string | null;
   proposed_action: string | null;
+  proposed_json: string | null;
   confidence: number | null;
   risk_level: "low" | "normal" | "high";
   status: "open" | "approved" | "edited" | "dismissed";
