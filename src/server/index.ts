@@ -1126,6 +1126,30 @@ app.post("/api/review-items/:id/resolve", async (c) => {
     [parsed.data.status, parsed.data.resolution, id],
   );
 
+  if (existing.review_type === "maintenance" && parsed.data.status === "approved" && existing.inbox_item_id) {
+    const inbox = await get<any>("SELECT * FROM inbox_items WHERE id = ?", [existing.inbox_item_id]);
+    if (inbox) {
+      const sourceNote = "AI Inbox item #" + inbox.id;
+      const prior = await get<any>("SELECT id FROM work_orders WHERE notes LIKE ? LIMIT 1", ["%" + sourceNote + "%"]);
+      if (!prior) {
+        const priority = existing.risk_level === "high" ? "urgent" : "normal";
+        const work = await run(
+          "INSERT INTO work_orders (property_id, unit_id, tenant_id, title, description, priority, status, notes) VALUES (?, ?, ?, ?, ?, ?, 'open', ?)",
+          [existing.property_id ?? inbox.property_id, existing.unit_id ?? inbox.unit_id,
+           existing.tenant_id ?? inbox.tenant_id, inbox.subject || "Maintenance request",
+           inbox.raw_text ?? null, priority, "Created after manager review of " + sourceNote],
+        );
+        await run(
+          "INSERT INTO activity_events (property_id, unit_id, tenant_id, event_type, entity_type, entity_id, summary, detail, source) VALUES (?, ?, ?, 'maintenance', 'work_order', ?, ?, ?, 'manager')",
+          [existing.property_id ?? inbox.property_id, existing.unit_id ?? inbox.unit_id,
+           existing.tenant_id ?? inbox.tenant_id, work.lastInsertRowid,
+           "Maintenance work order approved: " + (inbox.subject || "Maintenance request"),
+           parsed.data.resolution],
+        );
+      }
+    }
+  }
+
   // A payment exception is not complete just because the review card was clicked.
   // Keep the reconciliation record in sync so dashboards and audit history reflect
   // the manager's actual decision.
