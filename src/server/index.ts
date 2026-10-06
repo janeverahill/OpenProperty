@@ -730,6 +730,51 @@ app.get("/api/payment-reconciliations", async (c) => {
   return c.json({ payment_reconciliations: rows });
 });
 
+// ── Operations self-check ─────────────────────────────────────────
+// Pure decision-table tests for the automation rules. This endpoint never
+// writes portfolio data; it is safe to run repeatedly while hardening flows.
+
+function classifyPaymentCase(input: {
+  expected: number;
+  received: number;
+  late?: boolean;
+  force_review?: boolean;
+  allow_partial?: boolean;
+}) {
+  const difference = input.received - input.expected;
+  if (input.force_review) return { match_type: "special_rule", status: "needs_review" };
+  if (difference < 0 && input.allow_partial) return { match_type: "split", status: "auto_matched" };
+  if (difference < 0) return { match_type: "short", status: "needs_review" };
+  if (difference > 0) return { match_type: "over", status: "needs_review" };
+  if (input.late) return { match_type: "late", status: "needs_review" };
+  return { match_type: "exact", status: "auto_matched" };
+}
+
+app.get("/api/operations/self-check", (c) => {
+  const cases = [
+    { name: "exact on-time", input: { expected: 645, received: 645 }, want: ["exact", "auto_matched"] },
+    { name: "short unexplained", input: { expected: 919, received: 905 }, want: ["short", "needs_review"] },
+    { name: "overpayment", input: { expected: 645, received: 650 }, want: ["over", "needs_review"] },
+    { name: "exact but late", input: { expected: 942, received: 942, late: true }, want: ["late", "needs_review"] },
+    { name: "intentional split", input: { expected: 1144, received: 600, allow_partial: true }, want: ["split", "auto_matched"] },
+    { name: "special account", input: { expected: 1144, received: 1144, force_review: true }, want: ["special_rule", "needs_review"] },
+  ].map(test => {
+    const got = classifyPaymentCase(test.input);
+    return {
+      name: test.name,
+      passed: got.match_type === test.want[0] && got.status === test.want[1],
+      expected: { match_type: test.want[0], status: test.want[1] },
+      actual: got,
+    };
+  });
+  return c.json({
+    passed: cases.every(test => test.passed),
+    passed_count: cases.filter(test => test.passed).length,
+    total: cases.length,
+    cases,
+  });
+});
+
 // ── Vendors ────────────────────────────────────────────────────────
 
 const VendorInput = z.object({
