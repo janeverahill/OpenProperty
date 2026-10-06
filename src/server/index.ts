@@ -1054,6 +1054,50 @@ app.post("/api/review-items/:id/resolve", async (c) => {
     "UPDATE review_items SET status = ?, resolution = ?, resolved_at = datetime('now') WHERE id = ?",
     [parsed.data.status, parsed.data.resolution, id],
   );
+
+  // A payment exception is not complete just because the review card was clicked.
+  // Keep the reconciliation record in sync so dashboards and audit history reflect
+  // the manager's actual decision.
+  if (existing.review_type === "payment") {
+    const recon = existing.inbox_item_id
+      ? await get<any>(
+          "SELECT * FROM payment_reconciliations WHERE inbox_item_id = ? AND status = 'needs_review' ORDER BY id DESC LIMIT 1",
+          [existing.inbox_item_id],
+        )
+      : await get<any>(
+          "SELECT * FROM payment_reconciliations WHERE unit_id = ? AND status = 'needs_review' ORDER BY id DESC LIMIT 1",
+          [existing.unit_id],
+        );
+
+    if (recon) {
+      if (parsed.data.status === "approved") {
+        const payment = await run(
+          `INSERT INTO payments (charge_id, paid_at, amount, method, reference, notes)
+           VALUES (?, ?, ?, 'ach', ?, ?)`,
+          [recon.charge_id, recon.received_at, recon.received_amount, recon.reference,
+           "Applied after manager review: " + parsed.data.resolution],
+        );
+        await run(
+          "UPDATE payment_reconciliations SET payment_id = ?, status = 'resolved', decision = ?, reviewed_at = datetime('now') WHERE id = ?",
+          [payment.lastInsertRowid, parsed.data.resolution, recon.id],
+        );
+        const charge = await get<any>("SELECT amount FROM rent_charges WHERE id = ?", [recon.charge_id]);
+        const sum = await get<{ total: number }>(
+          "SELECT COALESCE(SUM(amount),0) total FROM payments WHERE charge_id = ?",
+          [recon.charge_id],
+        );
+        const totalPaid = Number(sum?.total ?? 0);
+        const chargeStatus = charge && totalPaid >= Number(charge.amount) ? "paid" : totalPaid > 0 ? "partial" : "open";
+        await run("UPDATE rent_charges SET amount_paid = ?, status = ? WHERE id = ?", [totalPaid, chargeStatus, recon.charge_id]);
+      } else if (parsed.data.status === "dismissed") {
+        await run(
+          "UPDATE payment_reconciliations SET status = 'resolved', decision = ?, reviewed_at = datetime('now') WHERE id = ?",
+          ["dismissed: " + parsed.data.resolution, recon.id],
+        );
+      }
+    }
+  }
+
   if (existing.inbox_item_id) {
     const inboxStatus = parsed.data.status === "dismissed" ? "dismissed" : "handled";
     await run("UPDATE inbox_items SET status = ?, handled_at = datetime('now') WHERE id = ?", [inboxStatus, existing.inbox_item_id]);
