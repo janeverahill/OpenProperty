@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, Inbox, CircleAlert, FileText, Wrench, Sparkles } from "lucide-react";
+import { CheckCircle2, Inbox, CircleAlert, FileText, Wrench, Sparkles, Camera, Plus } from "lucide-react";
 import { api } from "@/api";
 import { useApp } from "@/context";
 import type { InboxItem } from "@/types";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { PageShell } from "@/components/page-shell";
 
 export function AiInboxPage({ navigate }: { navigate: (to: string) => void }) {
@@ -12,6 +13,10 @@ export function AiInboxPage({ navigate }: { navigate: (to: string) => void }) {
   const [items, setItems] = useState<InboxItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<number | null>(null);
+  const [showCapture, setShowCapture] = useState(false);
+  const [captureSubject, setCaptureSubject] = useState("");
+  const [captureText, setCaptureText] = useState("");
+  const [captureSource, setCaptureSource] = useState<"photo" | "manual">("photo");
   const load = useCallback(async () => {
     try {
       setLoading(true);
@@ -21,6 +26,27 @@ export function AiInboxPage({ navigate }: { navigate: (to: string) => void }) {
     finally { setLoading(false); }
   }, [setError]);
   useEffect(() => { void load(); }, [load]);
+
+  async function captureItem() {
+    if (!captureSubject.trim() && !captureText.trim()) return;
+    try {
+      setProcessingId(-1);
+      const created = await api<{ inbox_item: InboxItem }>("POST", "/api/inbox", {
+        source_type: captureSource,
+        item_type: "unknown",
+        subject: captureSubject.trim() || (captureSource === "photo" ? "Photo intake" : "Manual intake"),
+        raw_text: captureText.trim() || null,
+        status: "new",
+      });
+      const routed = await api<{ next_action?: string | null }>("POST", `/api/inbox/${created.inbox_item.id}/auto-process`, {});
+      if (routed.next_action) await api("POST", routed.next_action, {});
+      setCaptureSubject("");
+      setCaptureText("");
+      setShowCapture(false);
+      await load();
+    } catch (err) { setError((err as Error).message); }
+    finally { setProcessingId(null); }
+  }
 
   async function classifyItem(item: InboxItem) {
     try {
@@ -47,7 +73,26 @@ export function AiInboxPage({ navigate }: { navigate: (to: string) => void }) {
   const waiting = items.filter(i => i.status === "new" || i.status === "classified");
   const review = items.filter(i => i.status === "needs_review");
   const handled = items.filter(i => i.status === "handled");
-  return <PageShell title="AI Inbox" meta="One intake stream for email, photos, documents, integrations and manager-entered items">
+  return <PageShell title="AI Inbox" meta="One intake stream for email, photos, documents, integrations and manager-entered items"
+    actions={<Button onClick={() => setShowCapture(v => !v)}><Plus className="h-4 w-4" /> Add intake</Button>}>
+    {showCapture && <Card className="p-5">
+      <div className="mb-4 flex items-center gap-2"><Camera className="h-4 w-4" /><h2 className="text-sm font-semibold">Quick intake</h2></div>
+      <div className="grid gap-3">
+        <div className="flex gap-2">
+          <Button size="sm" variant={captureSource === "photo" ? "default" : "outline"} onClick={() => setCaptureSource("photo")}>Photo / paper</Button>
+          <Button size="sm" variant={captureSource === "manual" ? "default" : "outline"} onClick={() => setCaptureSource("manual")}>Manual note</Button>
+        </div>
+        <Input value={captureSubject} onChange={e => setCaptureSubject(e.target.value)} placeholder="Short title — e.g. Unit 204 maintenance slip" />
+        <textarea value={captureText} onChange={e => setCaptureText(e.target.value)}
+          placeholder="Paste or type the text from the paper/photo for now. Image extraction will plug into this same intake path."
+          className="min-h-24 w-full rounded-sm bg-card px-3 py-2 text-sm shadow-edge outline-none" />
+        <div className="flex justify-end">
+          <Button disabled={processingId === -1 || (!captureSubject.trim() && !captureText.trim())} onClick={() => void captureItem()}>
+            <Sparkles className="h-4 w-4" /> Add & auto-process
+          </Button>
+        </div>
+      </div>
+    </Card>}
     <section className="grid grid-cols-3 gap-4">
       <Metric label="Waiting" value={waiting.length} />
       <Metric label="Needs attention" value={review.length} />
