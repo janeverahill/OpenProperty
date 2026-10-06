@@ -246,3 +246,25 @@ export interface ReviewItem {
   unit_name?: string | null;
   tenant_name?: string | null;
 }
+
+
+export interface PaymentReconciliation {
+  id: number;
+  inbox_item_id: number | null;
+  payment_id: number | null;
+  charge_id: number;
+  unit_id: number;
+  received_amount: number;
+  expected_amount: number;
+  received_at: string;
+  reference: string;
+  match_type: "exact" | "short" | "over" | "split" | "late" | "special_rule" | "unmatched";
+  difference: number;
+  confidence: number | null;
+  status: "pending" | "auto_matched" | "needs_review" | "resolved";
+  decision: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+  unit_name?: string | null;
+  property_name?: string | null;
+}
