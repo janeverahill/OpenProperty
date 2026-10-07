@@ -1530,6 +1530,9 @@ app.post("/api/review-items/:id/resolve", async (c) => {
     existing.unit_id = chosenUnit.id;
     existing.property_id = chosenUnit.property_id;
     await run("UPDATE review_items SET unit_id = ?, property_id = ? WHERE id = ?", [chosenUnit.id, chosenUnit.property_id, id]);
+    if (existing.inbox_item_id) {
+      await run("UPDATE inbox_items SET unit_id = ?, property_id = ? WHERE id = ?", [chosenUnit.id, chosenUnit.property_id, existing.inbox_item_id]);
+    }
   }
 
   await run(
