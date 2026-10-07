@@ -35,38 +35,37 @@ git checkout small-pm-os-v2
 git pull
 ```
 
-## 3. Install
+## 3. Fastest first run
+
+For the very first local test, use one command:
 
 ```bash
-pnpm install
+pnpm demo:first-run
 ```
 
-## 4. Verify the MVP
+That installs dependencies, creates a clean demo database, and starts the app.
 
-```bash
-pnpm mvp:verify
-```
-
-This runs the TypeScript check and production build.
-
-## 5. Start the test drive
-
-For a completely fresh demo database, run this once first:
-
-```bash
-pnpm demo:reset
-```
-
-Then start the app:
+For later sessions, use:
 
 ```bash
 pnpm demo
 ```
 
-The command:
-1. creates/updates the local D1 database,
-2. starts the API,
-3. starts the web interface.
+If you ever want to wipe the local test data and start fresh:
+
+```bash
+pnpm demo:reset
+```
+
+## 4. Optional verification
+
+```bash
+pnpm mvp:verify
+```
+
+This runs the TypeScript check and production build. GitHub CI also runs these checks automatically.
+
+The first-run command installs dependencies, creates/updates the local D1 database, starts the API, and starts the web interface.
 
 Open the Vite address shown in Terminal, normally:
 
