@@ -40,6 +40,7 @@ export function PropertyPage({ id, navigate }: { id: number; navigate: (to: stri
   const [unitDialogOpen, setUnitDialogOpen] = useState(false);
   const [woDialogOpen, setWoDialogOpen] = useState(false);
   const [assetUnit, setAssetUnit] = useState<Unit | null>(null);
+  const [assetUnitId, setAssetUnitId] = useState("");
 
   async function load() {
     try {
@@ -179,9 +180,19 @@ export function PropertyPage({ id, navigate }: { id: number; navigate: (to: stri
             <h2 className="text-[1.0625rem] font-semibold leading-tight">Unit assets & upgrades</h2>
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground">{assets.length} tracked</span>
-              {units.length > 0 && <Button size="sm" variant="outline" onClick={() => setAssetUnit(units[0])}>
-                <Plus className="mr-1 h-4 w-4" /> Add upgrade
-              </Button>}
+              {units.length > 0 && <>
+                <select aria-label="Unit for new asset" value={assetUnitId} onChange={(e) => setAssetUnitId(e.target.value)}
+                  className="h-9 rounded-md border bg-background px-2 text-sm">
+                  <option value="">Choose unit…</option>
+                  {units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
+                </select>
+                <Button size="sm" variant="outline" disabled={!assetUnitId} onClick={() => {
+                  const unit = units.find((candidate) => candidate.id === Number(assetUnitId));
+                  if (unit) setAssetUnit(unit);
+                }}>
+                  <Plus className="mr-1 h-4 w-4" /> Add upgrade
+                </Button>
+              </>}
             </div>
           </div>
           {assets.length === 0 ? (
