@@ -1277,6 +1277,38 @@ app.post("/api/inbox/:id/process-maintenance", async (c) => {
   return c.json({ needs_review: false, work_order: row }, 201);
 });
 
+function extractDocumentFacts(text: string) {
+  const category = /\b(invoice|receipt)\b/i.test(text) ? "invoice"
+    : /\b(quote|estimate)\b/i.test(text) ? "quote"
+      : null;
+  const costMatch = text.match(/\$\s*([\d,]+(?:\.\d{1,2})?)/);
+  const historyMatch = text.match(
+    /\b(new|replace(?:d)?|installed)\s+(.{2,60}?)(?=,|\$|\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b|\n|$)/i,
+  );
+  const dateMatch = text.match(
+    /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2}),?\s+(\d{4})\b/i,
+  );
+  let documentDate: string | null = null;
+  if (dateMatch) {
+    const parsed = new Date(`${dateMatch[1]} ${dateMatch[2]}, ${dateMatch[3]} 00:00:00 UTC`);
+    if (!Number.isNaN(parsed.getTime())) documentDate = parsed.toISOString().slice(0, 10);
+  }
+  const unitHint = text.match(/\bunit\s*#?\s*([a-z0-9-]+)\b/i)?.[1] ?? null;
+  let historyLabel: string | null = null;
+  if (historyMatch) {
+    const action = historyMatch[1].toLowerCase().startsWith("replace") ? "Replaced"
+      : historyMatch[1].toLowerCase() === "installed" ? "Installed" : "New";
+    historyLabel = `${action} ${historyMatch[2].trim().replace(/[.;:]+$/, "")}`;
+  }
+  return {
+    category,
+    unit_hint: unitHint,
+    document_date: documentDate,
+    history_label: historyLabel,
+    history_cost: costMatch ? Number(costMatch[1].replaceAll(",", "")) : null,
+  };
+}
+
 const ProcessInboxDocumentInput = z.object({
   category: z.string().min(1).optional(),
   title: z.string().min(1).optional(),
@@ -1299,9 +1331,29 @@ app.post("/api/inbox/:id/process-document", async (c) => {
   if (item.status === "handled" || item.status === "dismissed") return c.json({ error: "Inbox item has already been resolved" }, 409);
 
   const d = parsed.data;
-  const title = d.title || item.subject || "Incoming document";
-  const category = d.category || "other";
-  const lowConfidence = item.confidence != null && Number(item.confidence) < 0.9;
+  const facts = extractDocumentFacts(`${item.subject ?? ""}\n${item.raw_text ?? ""}`);
+
+  if (!item.unit_id && facts.unit_hint) {
+    const candidates = await query<any>(
+      "SELECT id, property_id FROM units WHERE lower(name) = lower(?) OR lower(name) = lower(?)",
+      [facts.unit_hint, "Unit " + facts.unit_hint],
+    );
+    const scoped = item.property_id
+      ? candidates.filter((candidate) => Number(candidate.property_id) === Number(item.property_id))
+      : candidates;
+    if (scoped.length === 1) {
+      item.unit_id = scoped[0].id;
+      item.property_id = scoped[0].property_id;
+      await run("UPDATE inbox_items SET unit_id = ?, property_id = ? WHERE id = ?", [item.unit_id, item.property_id, id]);
+    }
+  }
+
+  const category = d.category || facts.category || "other";
+  const documentDate = d.document_date ?? facts.document_date;
+  const historyLabel = d.history_label ?? facts.history_label;
+  const historyCost = d.history_cost ?? facts.history_cost;
+  const title = d.title || (category === "invoice" && historyLabel ? `Invoice — ${historyLabel}` : item.subject || "Incoming document");
+  const lowConfidence = item.confidence != null && Number(item.confidence) < 0.85;
   const missingAssignment = !item.property_id && !item.unit_id && !item.tenant_id;
   const shouldReview = Boolean(d.force_review || lowConfidence || missingAssignment);
 
@@ -1324,9 +1376,9 @@ app.post("/api/inbox/:id/process-document", async (c) => {
         [id, item.property_id, item.unit_id, item.tenant_id, "Document needs review — " + title,
          reasons || "Review this document before filing it.",
          "Confirm the document details, assignment and any deadline before filing.",
-         JSON.stringify({ category, title, document_date: d.document_date ?? null, deadline_at: d.deadline_at ?? null,
+         JSON.stringify({ category, title, document_date: documentDate ?? null, deadline_at: d.deadline_at ?? null,
            ai_summary: d.ai_summary ?? item.raw_text ?? null, storage_ref: d.storage_ref ?? item.source_ref ?? null,
-           history_label: d.history_label ?? null, history_cost: d.history_cost ?? null }),
+           history_label: historyLabel ?? null, history_cost: historyCost ?? null }),
          item.confidence ?? null],
       );
     }
@@ -1338,7 +1390,7 @@ app.post("/api/inbox/:id/process-document", async (c) => {
       (property_id, unit_id, tenant_id, category, title, storage_ref, source_inbox_item_id, document_date, deadline_at, ai_summary)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [item.property_id, item.unit_id, item.tenant_id, category, title, d.storage_ref ?? item.source_ref ?? null,
-     id, d.document_date ?? null, d.deadline_at ?? null, d.ai_summary ?? item.raw_text ?? null],
+     id, documentDate ?? null, d.deadline_at ?? null, d.ai_summary ?? item.raw_text ?? null],
   );
   await run("UPDATE inbox_items SET status = 'handled', handled_at = datetime('now') WHERE id = ?", [id]);
   await run(
@@ -1359,17 +1411,17 @@ app.post("/api/inbox/:id/process-document", async (c) => {
   // Extraction/OCR can pass a concise history label such as "New Whirlpool stove".
   // If the unit is already confirmed, file that operational history automatically.
   // If the unit is unclear, the document flow above sends the item to review instead.
-  if (item.unit_id && d.history_label?.trim()) {
+  if (item.unit_id && historyLabel?.trim()) {
     const duplicateHistory = await get<any>(
       "SELECT id FROM unit_assets WHERE unit_id = ? AND description = ? AND installed_at IS ? LIMIT 1",
-      [item.unit_id, d.history_label.trim(), d.document_date ?? null],
+      [item.unit_id, historyLabel.trim(), documentDate ?? null],
     );
     if (!duplicateHistory) {
       const asset = await run(
         `INSERT INTO unit_assets
           (unit_id, asset_type, description, installed_at, replacement_cost, status, notes)
          VALUES (?, 'property_history', ?, ?, ?, 'active', ?)`,
-        [item.unit_id, d.history_label.trim(), d.document_date ?? null, d.history_cost ?? null,
+        [item.unit_id, historyLabel.trim(), documentDate ?? null, historyCost ?? null,
          "Automatically created from filed document #" + doc.lastInsertRowid],
       );
       historyRecord = await get("SELECT * FROM unit_assets WHERE id = ?", [asset.lastInsertRowid]);
@@ -1378,7 +1430,7 @@ app.post("/api/inbox/:id/process-document", async (c) => {
           (property_id, unit_id, tenant_id, event_type, entity_type, entity_id, summary, detail, source)
          VALUES (?, ?, ?, 'asset', 'unit_asset', ?, ?, ?, 'ai')`,
         [item.property_id, item.unit_id, item.tenant_id, asset.lastInsertRowid,
-         "Unit history updated: " + d.history_label.trim(),
+         "Unit history updated: " + historyLabel.trim(),
          "Created automatically from document #" + doc.lastInsertRowid],
       );
     }
