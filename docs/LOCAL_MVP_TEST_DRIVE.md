@@ -107,12 +107,12 @@ Confirm the screen explains:
 - which unit will receive the record.
 
 ### E. Payment reconciliation
-Use the rent ledger/reconciliation area to check:
-- exact payment
-- short payment
-- late payment
+Open **Rent ledger**. The fresh demo now seeds three visible reconciliation scenarios:
+- **Unit 1** — exact payment, automatically reconciled
+- **Unit 101** — $14 short, sent to Needs Attention
+- **Unit 102** — exact amount but late, sent to Needs Attention
 
-The exact routine case should be the least intrusive. Exceptions should remain visible.
+Confirm the routine exact match stays out of your way while the two exceptions remain visible for a decision.
 
 ## What not to test yet
 
