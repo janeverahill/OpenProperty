@@ -707,10 +707,10 @@ app.post("/api/payment-reconciliations/evaluate", async (c) => {
       : "Review this payment manually before applying it.";
     await run(
       `INSERT INTO review_items
-        (inbox_item_id, property_id, unit_id, tenant_id, review_type, title, reason, proposed_action, confidence, risk_level)
-       VALUES (?, ?, ?, ?, 'payment', ?, ?, ?, ?, 'normal')`,
+        (inbox_item_id, property_id, unit_id, tenant_id, review_type, title, reason, proposed_action, proposed_json, confidence, risk_level)
+       VALUES (?, ?, ?, ?, 'payment', ?, ?, ?, ?, ?, 'normal')`,
       [d.inbox_item_id ?? null, charge.property_id, charge.unit_id, charge.primary_tenant_id,
-       title, reason, proposed, confidence],
+       title, reason, proposed, JSON.stringify({ reconciliation_id: reconciliationId, reference: d.reference, received_amount: received, expected_amount: expectedRemaining, match_type: matchType }), confidence],
     );
     if (d.inbox_item_id) await run("UPDATE inbox_items SET status = 'needs_review' WHERE id = ?", [d.inbox_item_id]);
   }
@@ -1488,15 +1488,20 @@ app.post("/api/review-items/:id/resolve", async (c) => {
   // Keep the reconciliation record in sync so dashboards and audit history reflect
   // the manager's actual decision.
   if (existing.review_type === "payment") {
-    const recon = existing.inbox_item_id
+    let proposed: any = {};
+    try { proposed = existing.proposed_json ? JSON.parse(existing.proposed_json) : {}; } catch { proposed = {}; }
+    const reconciliationId = Number(proposed.reconciliation_id);
+    const recon = Number.isInteger(reconciliationId) && reconciliationId > 0
       ? await get<any>(
-          "SELECT * FROM payment_reconciliations WHERE inbox_item_id = ? AND status = 'needs_review' ORDER BY id DESC LIMIT 1",
-          [existing.inbox_item_id],
+          "SELECT * FROM payment_reconciliations WHERE id = ? AND status = 'needs_review'",
+          [reconciliationId],
         )
-      : await get<any>(
-          "SELECT * FROM payment_reconciliations WHERE unit_id = ? AND status = 'needs_review' ORDER BY id DESC LIMIT 1",
-          [existing.unit_id],
-        );
+      : existing.inbox_item_id
+        ? await get<any>(
+            "SELECT * FROM payment_reconciliations WHERE inbox_item_id = ? AND status = 'needs_review' ORDER BY id DESC LIMIT 1",
+            [existing.inbox_item_id],
+          )
+        : null;
 
     if (recon) {
       if (parsed.data.status === "approved") {
