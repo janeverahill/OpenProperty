@@ -178,7 +178,7 @@ export function PropertyPage({ id, navigate }: { id: number; navigate: (to: stri
 
         <section>
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-[1.0625rem] font-semibold leading-tight">Unit assets & upgrades</h2>
+            <h2 className="text-[1.0625rem] font-semibold leading-tight">Unit history & upgrades</h2>
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground">{assets.length} tracked</span>
               {units.length > 0 && <>
@@ -198,7 +198,7 @@ export function PropertyPage({ id, navigate }: { id: number; navigate: (to: stri
           </div>
           {assets.length === 0 ? (
             <Card className="p-8 text-center text-sm text-muted-foreground">
-              No appliances, finishes or capital upgrades are tracked yet.
+              No unit history or capital upgrades are tracked yet.
             </Card>
           ) : (
             <Card className="divide-y">
@@ -207,13 +207,10 @@ export function PropertyPage({ id, navigate }: { id: number; navigate: (to: stri
                   <div className="flex min-w-0 items-start gap-3">
                     <PackageOpen className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                     <div className="min-w-0">
-                      <p className="text-sm font-medium capitalize">{asset.asset_type.replaceAll("_", " ")}</p>
+                      <p className="text-sm font-medium">{asset.description || asset.asset_type.replaceAll("_", " ")}</p>
                       <p className="text-xs text-muted-foreground">
-                        {[asset.unit_name, asset.description, asset.installed_at ? `Installed ${formatDate(asset.installed_at)}` : null].filter(Boolean).join(" · ")}
+                        {[asset.unit_name, asset.installed_at ? formatDate(asset.installed_at) : null, asset.asset_type !== "property_history" && asset.description ? asset.asset_type.replaceAll("_", " ") : null].filter(Boolean).join(" · ")}
                       </p>
-                      {(asset.make || asset.model || asset.serial_number) && <p className="mt-1 text-xs text-muted-foreground">
-                        {[asset.make, asset.model, asset.serial_number ? `S/N ${asset.serial_number}` : null].filter(Boolean).join(" · ")}
-                      </p>}
                     </div>
                   </div>
                   <div className="shrink-0 text-right">
