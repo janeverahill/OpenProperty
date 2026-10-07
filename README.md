@@ -24,6 +24,8 @@ This branch adds an exception-first operations layer for small property managers
 
 The current photo picker is intentionally **local-only**: images are not uploaded, stored or read yet. OCR/vision, Gmail ingestion, production authentication/security, deployment, billing and third-party storage are separate production-phase integrations. Current text classification/extraction is conservative rule-based automation, not a hidden model call.
 
+For the current acceptance checklist and click-through test, see [`docs/SMALL_PM_OS_MVP_HANDOFF.md`](docs/SMALL_PM_OS_MVP_HANDOFF.md).
+
 > Built on the [Clawnify](https://clawnify.com) template format. Deploy your own copy in minutes, customize freely, own the data.
 
 ## Features
