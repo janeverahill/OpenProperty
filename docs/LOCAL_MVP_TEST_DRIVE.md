@@ -70,19 +70,28 @@ Keep the Terminal window open while testing.
 
 Start with the Dashboard, then try these in order:
 
-### A. Invoice to unit history
+### A. Invoice to unit history — automatic path
 Open **AI Inbox → Add intake → Manual note** and enter:
+
+```text
+Invoice for Unit 1. New Whirlpool stove, January 12 2027. $849.00
+```
+
+The demo portfolio includes one unique **Unit 1**, so this is the cleanest automatic-path test. Confirm the invoice routes as a document, files, and creates unit history. Then check:
+- Documents & Deadlines
+- 308 Mission Apartments
+- Unit history & upgrades
+
+### B. Invoice to unit history — exception path
+Now enter:
 
 ```text
 Invoice for Unit 204. New Whirlpool stove, January 12 2027. $849.00
 ```
 
-If there is no Unit 204 in the demo portfolio, that is useful: confirm the item reaches **Needs Attention**, assign an existing demo unit, approve it, then check:
-- Documents & Deadlines
-- the selected property
-- Unit history & upgrades
+The demo portfolio does not include Unit 204. Confirm the system does **not** guess. It should reach **Needs Attention**, where you can assign an existing demo unit and approve it. Then confirm the document and history record land on the unit you chose.
 
-### B. Maintenance
+### C. Maintenance
 Enter a maintenance request such as:
 
 ```text
@@ -91,13 +100,13 @@ Unit 1 bathroom sink is leaking under the cabinet.
 
 Confirm an unambiguous assigned request can become a work order, while anything unclear remains visible for review.
 
-### C. Needs Attention
+### D. Needs Attention
 Confirm the screen explains:
 - why the item stopped,
 - what will happen if approved,
 - which unit will receive the record.
 
-### D. Payment reconciliation
+### E. Payment reconciliation
 Use the rent ledger/reconciliation area to check:
 - exact payment
 - short payment
