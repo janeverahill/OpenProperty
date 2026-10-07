@@ -14,6 +14,7 @@ function proposalDetails(item: ReviewItem) {
       title: "Title", priority: "Priority", category: "Category",
       document_date: "Document date", deadline_at: "Deadline",
       description: "Description", ai_summary: "Summary",
+      history_label: "Unit history", history_cost: "Cost",
     };
     return Object.entries(value)
       .filter(([key, val]) => key !== "storage_ref" && val != null && String(val).trim() !== "")
