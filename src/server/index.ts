@@ -1221,7 +1221,7 @@ app.post("/api/inbox/:id/process-maintenance", async (c) => {
     const reasons = [
       missingAssignment ? "Property or unit could not be confirmed." : null,
       highRisk ? "Urgent maintenance requires manager review before routing." : null,
-      item.confidence != null && Number(item.confidence) < 0.9 ? "AI confidence is below the automatic-processing threshold." : null,
+      item.confidence != null && Number(item.confidence) < 0.9 ? "Automation confidence is below the automatic-processing threshold." : null,
       parsed.data.force_review ? "Manual review was requested." : null,
     ].filter(Boolean).join(" ");
     const existingReview = await get<any>(
@@ -1363,7 +1363,7 @@ app.post("/api/inbox/:id/process-document", async (c) => {
   if (shouldReview) {
     const reasons = [
       missingAssignment ? "Property, unit or tenant could not be confirmed." : null,
-      lowConfidence ? "AI confidence is below the automatic-processing threshold." : null,
+      lowConfidence ? "Automation confidence is below the automatic-processing threshold." : null,
       d.force_review ? "Manual review was requested." : null,
     ].filter(Boolean).join(" ");
     const existingReview = await get<any>(
