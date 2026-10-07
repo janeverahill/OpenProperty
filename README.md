@@ -8,6 +8,22 @@ Open-source **property management software** — a self-hosted, cloud-based alte
 
 Rental property management with everything you need to run a portfolio: properties and units, tenants and leases, rent collection and a ledger, maintenance work orders, and a vendor directory.
 
+## Small Property Manager OS MVP
+
+This branch adds an exception-first operations layer for small property managers:
+
+- **AI Inbox / operations intake** for manual notes, paper/photo references, documents and future integrations
+- **Needs Attention** queue so routine work stays out of the manager's way and ambiguous/high-risk items require approval
+- **Payment reconciliation** with exact-match automation and review for late, short, over, split and special-rule payments
+- **Maintenance routing** from intake into work orders, with manager review when assignment or urgency is unclear
+- **Documents & deadlines** with filing, deadline review and an audit trail
+- **Unit history & upgrades** so invoices and manager-entered records can build a practical property history
+- **Invoice fact extraction from typed intake** for unit hints, dates, cost and concise history labels, with review rather than guessing when the unit is ambiguous
+
+### MVP boundaries
+
+The current photo picker is intentionally **local-only**: images are not uploaded, stored or read yet. OCR/vision, Gmail ingestion, production authentication/security, deployment, billing and third-party storage are separate production-phase integrations. Current text classification/extraction is conservative rule-based automation, not a hidden model call.
+
 > Built on the [Clawnify](https://clawnify.com) template format. Deploy your own copy in minutes, customize freely, own the data.
 
 ## Features
@@ -63,7 +79,7 @@ pnpm typecheck
 pnpm build
 ```
 
-The dev script applies `src/server/schema.sql` to the local D1 database, then runs Vite and Wrangler in parallel. The schema seeds 3 sample properties, 5 units, and 3 vendors so the app is usable on first boot.
+The dev script applies `src/server/schema.sql` to the local D1 database, then runs Vite and Wrangler in parallel. First-run demo data is seeded by the server when `demo_mode` is enabled, so the app is usable on first boot without putting seed inserts in the DDL.
 
 ## Deploy
 
