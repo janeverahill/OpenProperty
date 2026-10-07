@@ -19,6 +19,9 @@ export function UnitAssetDialog({ open, onOpenChange, unit, asset, onSaved }: {
   const [model, setModel] = useState("");
   const [serial, setSerial] = useState("");
   const [installedAt, setInstalledAt] = useState("");
+  const [make, setMake] = useState("");
+  const [model, setModel] = useState("");
+  const [serialNumber, setSerialNumber] = useState("");
   const [life, setLife] = useState("");
   const [cost, setCost] = useState("");
   const [status, setStatus] = useState<UnitAsset["status"]>("active");
@@ -33,6 +36,9 @@ export function UnitAssetDialog({ open, onOpenChange, unit, asset, onSaved }: {
     setModel(asset?.model ?? "");
     setSerial(asset?.serial_number ?? "");
     setInstalledAt(asset?.installed_at?.slice(0, 10) ?? "");
+    setMake(asset?.make ?? "");
+    setModel(asset?.model ?? "");
+    setSerialNumber(asset?.serial_number ?? "");
     setLife(asset?.expected_life_years != null ? String(asset.expected_life_years) : "");
     setCost(asset?.replacement_cost != null ? String(asset.replacement_cost) : "");
     setStatus(asset?.status ?? "active");
@@ -46,6 +52,7 @@ export function UnitAssetDialog({ open, onOpenChange, unit, asset, onSaved }: {
       const payload = {
         unit_id: unit.id, asset_type: assetType.trim(), description: description.trim() || null,
         make: make.trim() || null, model: model.trim() || null, serial_number: serial.trim() || null,
+        make: make.trim() || null, model: model.trim() || null, serial_number: serialNumber.trim() || null,
         installed_at: installedAt || null, expected_life_years: life ? Number(life) : null,
         replacement_cost: cost ? Number(cost) : null, status, notes: notes.trim() || null,
       };
@@ -64,6 +71,11 @@ export function UnitAssetDialog({ open, onOpenChange, unit, asset, onSaved }: {
         <div><Label htmlFor="asset-make">Make</Label><Input id="asset-make" value={make} onChange={e => setMake(e.target.value)} /></div>
         <div><Label htmlFor="asset-model">Model</Label><Input id="asset-model" value={model} onChange={e => setModel(e.target.value)} /></div>
         <div><Label htmlFor="asset-serial">Serial number</Label><Input id="asset-serial" value={serial} onChange={e => setSerial(e.target.value)} /></div>
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        <div><Label htmlFor="asset-make">Make</Label><Input id="asset-make" value={make} onChange={e => setMake(e.target.value)} placeholder="Whirlpool" /></div>
+        <div><Label htmlFor="asset-model">Model</Label><Input id="asset-model" value={model} onChange={e => setModel(e.target.value)} /></div>
+        <div><Label htmlFor="asset-serial">Serial number</Label><Input id="asset-serial" value={serialNumber} onChange={e => setSerialNumber(e.target.value)} /></div>
       </div>
       <div className="grid grid-cols-3 gap-3">
         <div><Label htmlFor="asset-date">Installed</Label><Input id="asset-date" type="date" value={installedAt} onChange={e => setInstalledAt(e.target.value)} /></div>
