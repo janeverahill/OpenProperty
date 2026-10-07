@@ -35,7 +35,7 @@ export function AiInboxPage({ navigate }: { navigate: (to: string) => void }) {
       setProcessingId(-1);
       const created = await api<{ inbox_item: InboxItem }>("POST", "/api/inbox", {
         source_type: captureSource,
-        source_ref: photoName ? `local-photo:${photoName}` : null,
+        source_ref: null,
         item_type: "unknown",
         subject: captureSubject.trim() || (captureSource === "photo" ? "Photo intake" : "Manual intake"),
         raw_text: captureText.trim() || null,
@@ -97,15 +97,15 @@ export function AiInboxPage({ navigate }: { navigate: (to: string) => void }) {
           <Button type="button" variant="outline" onClick={() => fileRef.current?.click()}>
             <Camera className="h-4 w-4" /> {photoName ? "Change photo" : "Take or choose photo"}
           </Button>
-          <span className="ml-3 text-xs text-muted-foreground">{photoName || "Image stays local for now; extraction/storage is the next connector."}</span>
+          <span className="ml-3 text-xs text-muted-foreground">{photoName ? `${photoName} selected locally — not uploaded yet` : "Photo upload/extraction is not connected yet. Choose a photo for reference, then type the useful details below."}</span>
         </div>}
         <Input value={captureSubject} onChange={e => setCaptureSubject(e.target.value)} placeholder="Short title — e.g. Unit 204 maintenance slip" />
         <textarea value={captureText} onChange={e => setCaptureText(e.target.value)}
-          placeholder={captureSource === "photo" ? "Add any visible text or a quick note. Automatic image extraction will plug into this field next." : "Type the note or request."}
+          placeholder={captureSource === "photo" ? "For now, type the useful details from the photo — e.g. Unit 204, new Whirlpool stove, Jan 12 2027, $849." : "Type the note or request."}
           className="min-h-24 w-full rounded-sm bg-card px-3 py-2 text-sm shadow-edge outline-none" />
         <div className="flex justify-end">
-          <Button disabled={processingId === -1 || (!captureSubject.trim() && !captureText.trim())} onClick={() => void captureItem()}>
-            <Sparkles className="h-4 w-4" /> Add & auto-process
+          <Button disabled={processingId === -1 || (captureSource === "photo" ? !captureText.trim() : (!captureSubject.trim() && !captureText.trim()))} onClick={() => void captureItem()}>
+            <Sparkles className="h-4 w-4" /> Add & route
           </Button>
         </div>
       </div>
