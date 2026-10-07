@@ -1437,6 +1437,7 @@ app.post("/api/review-items", async (c) => {
 const ResolveReviewInput = z.object({
   status: z.enum(["approved", "edited", "dismissed"]),
   resolution: z.string().min(1),
+  unit_id: z.number().int().positive().optional().nullable(),
 });
 
 app.post("/api/review-items/:id/resolve", async (c) => {
@@ -1446,6 +1447,17 @@ app.post("/api/review-items/:id/resolve", async (c) => {
   if (!parsed.ok) return c.json({ error: parsed.error }, 400);
   const existing = await get<any>("SELECT * FROM review_items WHERE id = ?", [id]);
   if (!existing) return c.json({ error: "Not found" }, 404);
+
+  // A manager can resolve an ambiguous document/maintenance item by choosing
+  // the correct unit at approval time. Property follows the unit automatically.
+  if (parsed.data.unit_id) {
+    const chosenUnit = await get<any>("SELECT id, property_id FROM units WHERE id = ?", [parsed.data.unit_id]);
+    if (!chosenUnit) return c.json({ error: "Selected unit not found" }, 404);
+    existing.unit_id = chosenUnit.id;
+    existing.property_id = chosenUnit.property_id;
+    await run("UPDATE review_items SET unit_id = ?, property_id = ? WHERE id = ?", [chosenUnit.id, chosenUnit.property_id, id]);
+  }
+
   await run(
     "UPDATE review_items SET status = ?, resolution = ?, resolved_at = datetime('now') WHERE id = ?",
     [parsed.data.status, parsed.data.resolution, id],
