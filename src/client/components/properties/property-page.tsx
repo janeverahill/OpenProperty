@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { PropertyDialog } from "./property-dialog";
 import { UnitDialog } from "./unit-dialog";
+import { UnitAssetDialog } from "./unit-asset-dialog";
 import { WorkOrderDialog } from "../maintenance/work-order-dialog";
 import type { Property, Unit, WorkOrder, UnitAsset } from "@/types";
 import { PageShell } from "@/components/page-shell";
@@ -38,6 +39,7 @@ export function PropertyPage({ id, navigate }: { id: number; navigate: (to: stri
   const [editingUnit, setEditingUnit] = useState<Unit | undefined>(undefined);
   const [unitDialogOpen, setUnitDialogOpen] = useState(false);
   const [woDialogOpen, setWoDialogOpen] = useState(false);
+  const [assetUnit, setAssetUnit] = useState<Unit | null>(null);
 
   async function load() {
     try {
@@ -175,7 +177,12 @@ export function PropertyPage({ id, navigate }: { id: number; navigate: (to: stri
         <section>
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-[1.0625rem] font-semibold leading-tight">Unit assets & upgrades</h2>
-            <span className="text-xs text-muted-foreground">{assets.length} tracked</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">{assets.length} tracked</span>
+              {units.length > 0 && <Button size="sm" variant="outline" onClick={() => setAssetUnit(units[0])}>
+                <Plus className="mr-1 h-4 w-4" /> Add upgrade
+              </Button>}
+            </div>
           </div>
           {assets.length === 0 ? (
             <Card className="p-8 text-center text-sm text-muted-foreground">
@@ -250,6 +257,12 @@ export function PropertyPage({ id, navigate }: { id: number; navigate: (to: stri
         propertyId={property.id}
         unit={editingUnit}
       />
+      {assetUnit && <UnitAssetDialog
+        open={Boolean(assetUnit)}
+        onOpenChange={(o) => { if (!o) setAssetUnit(null); }}
+        unit={assetUnit}
+        onSaved={() => void load()}
+      />}
       <WorkOrderDialog
         open={woDialogOpen}
         onOpenChange={(o) => { setWoDialogOpen(o); if (!o) load(); }}
