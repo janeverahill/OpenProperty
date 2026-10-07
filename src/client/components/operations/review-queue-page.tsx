@@ -49,7 +49,7 @@ export function ReviewQueuePage() {
       await api("POST", `/api/review-items/${item.id}/resolve`, {
         status,
         resolution: status === "approved" ? "Approved by manager" : "Dismissed by manager",
-        unit_id: selectedUnit ? Number(selectedUnit) : item.unit_id,
+        unit_id: status === "approved" ? (selectedUnit ? Number(selectedUnit) : item.unit_id) : undefined,
       });
       await load();
     } catch (err) { setError((err as Error).message); }
