@@ -22,7 +22,8 @@ const DEFAULT_SETTINGS: Record<string, string> = {
   default_rent_due_day: "1",
   late_fee_amount: "50",
   late_fee_grace_days: "5",
-  currency: "USD",
+  currency: "CAD",
+  demo_mode: "true",
 };
 
 const DEMO_PROPERTIES: Array<[string, string, string, string, string, string, string]> = [
@@ -56,8 +57,10 @@ async function ensureSeeded(): Promise<void> {
       await run("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", [key, value]);
     }
 
+    const demoSetting = await get<{ value: string }>("SELECT value FROM settings WHERE key = 'demo_mode'");
+    const demoMode = demoSetting?.value !== "false";
     const props = await get<{ n: number }>("SELECT COUNT(*) AS n FROM properties");
-    if ((props?.n ?? 0) === 0) {
+    if (demoMode && (props?.n ?? 0) === 0) {
       const ids: number[] = [];
       for (const p of DEMO_PROPERTIES) {
         await run(
@@ -80,7 +83,7 @@ async function ensureSeeded(): Promise<void> {
     }
 
     const vendors = await get<{ n: number }>("SELECT COUNT(*) AS n FROM vendors");
-    if ((vendors?.n ?? 0) === 0) {
+    if (demoMode && (vendors?.n ?? 0) === 0) {
       for (const v of DEMO_VENDORS) {
         await run("INSERT INTO vendors (name, category, phone, color) VALUES (?, ?, ?, ?)", v);
       }
