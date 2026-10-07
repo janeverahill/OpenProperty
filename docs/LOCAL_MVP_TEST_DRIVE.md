@@ -51,6 +51,14 @@ This runs the TypeScript check and production build.
 
 ## 5. Start the test drive
 
+For a completely fresh demo database, run this once first:
+
+```bash
+pnpm demo:reset
+```
+
+Then start the app:
+
 ```bash
 pnpm demo
 ```
