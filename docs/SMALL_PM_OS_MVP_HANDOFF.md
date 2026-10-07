@@ -104,6 +104,8 @@ Use the **local MVP test drive first**, before any hosted preview. It is faster,
 
 ## MVP acceptance standard
 
+Before the user test, CI now also runs a runtime smoke check (`pnpm mvp:smoke`) that starts the local Worker, verifies the operations rule checks, confirms the demo portfolio seeded, and confirms exact/short/late payment scenarios are available.
+
 The MVP is ready for a first real user test when:
 - routine workflows are understandable without explanation,
 - ambiguous items do not silently guess,
