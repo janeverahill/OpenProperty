@@ -1501,6 +1501,30 @@ app.post("/api/review-items/:id/resolve", async (c) => {
           [existing.property_id ?? inbox.property_id, existing.unit_id ?? inbox.unit_id, existing.tenant_id ?? inbox.tenant_id,
            doc.lastInsertRowid, "Document filed after review: " + title, parsed.data.resolution],
         );
+        const historyUnitId = existing.unit_id ?? inbox.unit_id;
+        if (historyUnitId && proposed.history_label?.trim()) {
+          const duplicateHistory = await get<any>(
+            "SELECT id FROM unit_assets WHERE unit_id = ? AND description = ? AND installed_at IS ? LIMIT 1",
+            [historyUnitId, proposed.history_label.trim(), proposed.document_date ?? null],
+          );
+          if (!duplicateHistory) {
+            const history = await run(
+              `INSERT INTO unit_assets
+                (unit_id, asset_type, description, installed_at, replacement_cost, status, notes)
+               VALUES (?, 'property_history', ?, ?, ?, 'active', ?)`,
+              [historyUnitId, proposed.history_label.trim(), proposed.document_date ?? null, proposed.history_cost ?? null,
+               "Created from approved document #" + doc.lastInsertRowid],
+            );
+            await run(
+              `INSERT INTO activity_events
+                (property_id, unit_id, tenant_id, event_type, entity_type, entity_id, summary, detail, source)
+               VALUES (?, ?, ?, 'asset', 'unit_asset', ?, ?, ?, 'manager')`,
+              [existing.property_id ?? inbox.property_id, historyUnitId, existing.tenant_id ?? inbox.tenant_id,
+               history.lastInsertRowid, "Unit history updated: " + proposed.history_label.trim(),
+               "Created after manager clarified document #" + doc.lastInsertRowid],
+            );
+          }
+        }
         if (proposed.deadline_at) {
           const deadlineExists = await get<any>(
             "SELECT id FROM review_items WHERE inbox_item_id = ? AND review_type = 'deadline' AND status = 'open' LIMIT 1",
