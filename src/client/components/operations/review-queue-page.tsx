@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { CircleAlert, CheckCircle2 } from "lucide-react";
 import { api } from "@/api";
 import { useApp } from "@/context";
-import type { ReviewItem } from "@/types";
+import type { ReviewItem, Unit } from "@/types";
 import { Card } from "@/components/ui/card";
 import { PageShell } from "@/components/page-shell";
 
@@ -25,13 +25,19 @@ function proposalDetails(item: ReviewItem) {
 export function ReviewQueuePage() {
   const { setError } = useApp();
   const [items, setItems] = useState<ReviewItem[]>([]);
+  const [units, setUnits] = useState<Unit[]>([]);
+  const [unitSelections, setUnitSelections] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState<number | null>(null);
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await api<{ review_items: ReviewItem[] }>("GET", "/api/review-items?status=open");
+      const [data, unitData] = await Promise.all([
+        api<{ review_items: ReviewItem[] }>("GET", "/api/review-items?status=open"),
+        api<{ units: Unit[] }>("GET", "/api/units"),
+      ]);
       setItems(data.review_items);
+      setUnits(unitData.units);
     } catch (err) { setError((err as Error).message); }
     finally { setLoading(false); }
   }, [setError]);
@@ -39,8 +45,11 @@ export function ReviewQueuePage() {
   async function resolve(item: ReviewItem, status: "approved" | "dismissed") {
     try {
       setWorking(item.id);
+      const selectedUnit = unitSelections[item.id];
       await api("POST", `/api/review-items/${item.id}/resolve`, {
-        status, resolution: status === "approved" ? "Approved by manager" : "Dismissed by manager",
+        status,
+        resolution: status === "approved" ? "Approved by manager" : "Dismissed by manager",
+        unit_id: selectedUnit ? Number(selectedUnit) : item.unit_id,
       });
       await load();
     } catch (err) { setError((err as Error).message); }
@@ -66,6 +75,19 @@ export function ReviewQueuePage() {
               {item.confidence != null ? ` · AI confidence ${Math.round(item.confidence * 100)}%` : ""}
             </p>
             {item.proposed_action && <p className="mt-3 text-sm"><span className="font-medium">Suggested:</span> {item.proposed_action}</p>}
+            {(item.review_type === "document" || item.review_type === "maintenance") && <div className="mt-3">
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">Assign / confirm unit</label>
+              <select
+                value={unitSelections[item.id] ?? (item.unit_id ? String(item.unit_id) : "")}
+                onChange={(e) => setUnitSelections((current) => ({ ...current, [item.id]: e.target.value }))}
+                className="h-9 min-w-64 rounded-md border bg-background px-2 text-sm"
+              >
+                <option value="">No unit selected</option>
+                {units.map((unit) => <option key={unit.id} value={unit.id}>
+                  {[unit.property_name, unit.name].filter(Boolean).join(" — ")}
+                </option>)}
+              </select>
+            </div>}
             {proposalDetails(item).length > 0 && <div className="mt-3 rounded-md border bg-muted/30 p-3">
               <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">What will happen if you approve</div>
               <dl className="grid gap-2 text-sm sm:grid-cols-2">
