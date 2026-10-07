@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Building2, MapPin, Pencil, Plus, Wrench } from "lucide-react";
+import { ArrowLeft, Building2, MapPin, Pencil, Plus, Wrench, PackageOpen } from "lucide-react";
 import { useApp } from "@/context";
 import { api } from "@/api";
 import { cn, colorClasses, formatDate, formatMoney } from "@/lib/utils";
@@ -9,7 +9,7 @@ import { Card } from "@/components/ui/card";
 import { PropertyDialog } from "./property-dialog";
 import { UnitDialog } from "./unit-dialog";
 import { WorkOrderDialog } from "../maintenance/work-order-dialog";
-import type { Property, Unit, WorkOrder } from "@/types";
+import type { Property, Unit, WorkOrder, UnitAsset } from "@/types";
 import { PageShell } from "@/components/page-shell";
 
 const TYPE_LABEL: Record<string, string> = {
@@ -32,6 +32,7 @@ export function PropertyPage({ id, navigate }: { id: number; navigate: (to: stri
   const [property, setProperty] = useState<Property | null>(null);
   const [units, setUnits] = useState<Unit[]>([]);
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
+  const [assets, setAssets] = useState<UnitAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingProperty, setEditingProperty] = useState(false);
   const [editingUnit, setEditingUnit] = useState<Unit | undefined>(undefined);
@@ -41,14 +42,16 @@ export function PropertyPage({ id, navigate }: { id: number; navigate: (to: stri
   async function load() {
     try {
       setLoading(true);
-      const [{ property: p }, ulist, wlist] = await Promise.all([
+      const [{ property: p }, ulist, wlist, assetData] = await Promise.all([
         api<{ property: Property }>("GET", `/api/properties/${id}`),
         app.listUnits(id),
         app.listWorkOrders({ property_id: id }),
+        api<{ unit_assets: UnitAsset[] }>("GET", "/api/unit-assets"),
       ]);
       setProperty(p);
       setUnits(ulist);
       setWorkOrders(wlist);
+      setAssets(assetData.unit_assets.filter((asset) => unitsForProperty(asset, ulist)));
     } catch (err) {
       app.setError((err as Error).message);
     } finally {
@@ -171,6 +174,41 @@ export function PropertyPage({ id, navigate }: { id: number; navigate: (to: stri
 
         <section>
           <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-[1.0625rem] font-semibold leading-tight">Unit assets & upgrades</h2>
+            <span className="text-xs text-muted-foreground">{assets.length} tracked</span>
+          </div>
+          {assets.length === 0 ? (
+            <Card className="p-8 text-center text-sm text-muted-foreground">
+              No appliances, finishes or capital upgrades are tracked yet.
+            </Card>
+          ) : (
+            <Card className="divide-y">
+              {assets.slice(0, 12).map((asset) => (
+                <div key={asset.id} className="flex items-start justify-between gap-4 p-4">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <PackageOpen className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium capitalize">{asset.asset_type.replaceAll("_", " ")}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {[asset.unit_name, asset.description, asset.installed_at ? `Installed ${formatDate(asset.installed_at)}` : null].filter(Boolean).join(" · ")}
+                      </p>
+                      {(asset.make || asset.model || asset.serial_number) && <p className="mt-1 text-xs text-muted-foreground">
+                        {[asset.make, asset.model, asset.serial_number ? `S/N ${asset.serial_number}` : null].filter(Boolean).join(" · ")}
+                      </p>}
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <Badge variant={asset.status === "needs_attention" ? "secondary" : "neutral"} className="capitalize">{asset.status.replaceAll("_", " ")}</Badge>
+                    {asset.replacement_cost != null && <div className="mt-1 text-xs tabular-nums text-muted-foreground">{formatMoney(asset.replacement_cost, app.settings.currency)}</div>}
+                  </div>
+                </div>
+              ))}
+            </Card>
+          )}
+        </section>
+
+        <section>
+          <div className="mb-3 flex items-center justify-between">
             <h2 className="text-[1.0625rem] font-semibold leading-tight">Work orders</h2>
             <Button size="sm" variant="outline" onClick={() => setWoDialogOpen(true)}>
               <Plus className="mr-1 h-4 w-4" /> New work order
@@ -219,6 +257,10 @@ export function PropertyPage({ id, navigate }: { id: number; navigate: (to: stri
       />
     </PageShell>
   );
+}
+
+function unitsForProperty(asset: UnitAsset, units: Unit[]) {
+  return units.some((unit) => unit.id === asset.unit_id);
 }
 
 function SummaryCard({ label, value, tone = "default" }: { label: string; value: string; tone?: "default" | "warn" }) {
