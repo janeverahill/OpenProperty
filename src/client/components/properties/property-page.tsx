@@ -182,7 +182,7 @@ export function PropertyPage({ id, navigate }: { id: number; navigate: (to: stri
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground">{assets.length} tracked</span>
               {units.length > 0 && <>
-                <select aria-label="Unit for new asset" value={assetUnitId} onChange={(e) => setAssetUnitId(e.target.value)}
+                <select aria-label="Unit for new history record" value={assetUnitId} onChange={(e) => setAssetUnitId(e.target.value)}
                   className="h-9 rounded-md border bg-background px-2 text-sm">
                   <option value="">Choose unit…</option>
                   {units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
@@ -191,7 +191,7 @@ export function PropertyPage({ id, navigate }: { id: number; navigate: (to: stri
                   const unit = units.find((candidate) => candidate.id === Number(assetUnitId));
                   if (unit) { setEditingAsset(undefined); setAssetUnit(unit); }
                 }}>
-                  <Plus className="mr-1 h-4 w-4" /> Add upgrade
+                  <Plus className="mr-1 h-4 w-4" /> Add history
                 </Button>
               </>}
             </div>
@@ -214,7 +214,7 @@ export function PropertyPage({ id, navigate }: { id: number; navigate: (to: stri
                     </div>
                   </div>
                   <div className="shrink-0 text-right">
-                    <Badge variant={asset.status === "needs_attention" ? "secondary" : "neutral"} className="capitalize">{asset.status.replaceAll("_", " ")}</Badge>
+                    {asset.asset_type !== "property_history" && <Badge variant={asset.status === "needs_attention" ? "secondary" : "neutral"} className="capitalize">{asset.status.replaceAll("_", " ")}</Badge>}
                     {asset.replacement_cost != null && <div className="mt-1 text-xs tabular-nums text-muted-foreground">{formatMoney(asset.replacement_cost, app.settings.currency)}</div>}
                   </div>
                 </div>
