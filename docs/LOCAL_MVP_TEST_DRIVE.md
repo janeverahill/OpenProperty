@@ -79,7 +79,7 @@ Invoice for Unit 1. New Whirlpool stove, January 12 2027. $849.00
 
 The demo portfolio includes one unique **Unit 1**, so this is the cleanest automatic-path test. Confirm the invoice routes as a document, files, and creates unit history. Then check:
 - Documents & Deadlines
-- 308 Mission Apartments
+- Lakeside Apartments
 - Unit history & upgrades
 
 ### B. Invoice to unit history — exception path
