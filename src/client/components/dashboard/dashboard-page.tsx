@@ -67,13 +67,22 @@ export function DashboardPage({ navigate }: { navigate: (to: string) => void }) 
                   {operations.handled_today} handled today · {operations.inbox_unprocessed} waiting in Inbox · {operations.payment_exceptions} payment exception{operations.payment_exceptions === 1 ? "" : "s"}
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => navigate("/review")}
-                className="text-xs font-medium text-primary hover:underline"
-              >
-                Open Needs Attention
-              </button>
+              <div className="flex items-center gap-3">
+                {operations.inbox_unprocessed > 0 && <button
+                  type="button"
+                  onClick={() => navigate("/inbox")}
+                  className="text-xs font-medium text-primary hover:underline"
+                >
+                  Open Inbox
+                </button>}
+                {operations.needs_attention > 0 && <button
+                  type="button"
+                  onClick={() => navigate("/review")}
+                  className="text-xs font-medium text-primary hover:underline"
+                >
+                  Open Needs Attention
+                </button>}
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
               <OpsStat label="Needs attention" value={operations.needs_attention} tone={operations.needs_attention ? "danger" : "default"} />
