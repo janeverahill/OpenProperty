@@ -27,24 +27,33 @@ const DEFAULT_SETTINGS: Record<string, string> = {
 };
 
 const DEMO_PROPERTIES: Array<[string, string, string, string, string, string, string]> = [
-  ["Oakwood Estate", "single_family", "210 Oakwood Ln", "Austin", "TX", "78704", "emerald"],
-  ["Honeybee Hideaway", "single_family", "88 Bramble Ct", "Austin", "TX", "78704", "amber"],
-  ["308 Mission Apartments", "multi_family", "308 Mission St", "Austin", "TX", "78702", "sky"],
+  ["Maple Court", "multi_family", "100 Maple St", "Kingston", "ON", "K7L 2N1", "emerald"],
+  ["Harbour House", "single_family", "88 Harbour Rd", "Brockville", "ON", "K6V 3A1", "amber"],
+  ["Lakeside Apartments", "multi_family", "308 Lakeside Dr", "Kingston", "ON", "K7M 4B2", "sky"],
 ];
 
 /** property index (into DEMO_PROPERTIES), name, beds, baths, sqft, rent, status */
 const DEMO_UNITS: Array<[number, string, number, number, number, number, string]> = [
-  [0, "Main house", 3, 2, 1450, 2300, "occupied"],
+  [0, "Unit 101", 1, 1, 600, 1450, "occupied"],
+  [0, "Unit 102", 1, 1, 600, 1500, "occupied"],
   [1, "Main house", 2, 1, 980, 1700, "occupied"],
   [2, "Unit 1", 1, 1, 620, 1450, "occupied"],
   [2, "Unit 2", 1, 1, 620, 1450, "vacant"],
   [2, "Unit 3", 2, 1, 850, 1850, "occupied"],
 ];
 
+const DEMO_TENANTS: Array<[number, string, string, string]> = [
+  [0, "Unit 101", "Alex", "Morgan"],
+  [0, "Unit 102", "Priya", "Shah"],
+  [1, "Main house", "Jordan", "Lee"],
+  [2, "Unit 1", "Sam", "Taylor"],
+  [2, "Unit 3", "Casey", "Brown"],
+];
+
 const DEMO_VENDORS: Array<[string, string, string, string]> = [
-  ["Emerald Pool Service", "general", "512-555-0144", "emerald"],
-  ["Hill Country Plumbing", "plumber", "512-555-0188", "sky"],
-  ["Bright Spark Electric", "electrician", "512-555-0102", "amber"],
+  ["Rideau Plumbing", "plumber", "613-555-0188", "sky"],
+  ["Maple Electric", "electrician", "613-555-0102", "amber"],
+  ["North Shore Property Care", "general", "613-555-0144", "emerald"],
 ];
 
 let seeded = false; // per-isolate fast path; the COUNT re-checks are cheap
@@ -79,6 +88,48 @@ async function ensureSeeded(): Promise<void> {
             [ids[pi], name, beds, baths, sqft, rent, status],
           );
         }
+      }
+    }
+
+    if (demoMode) {
+      const tenantCount = await get<{ n: number }>("SELECT COUNT(*) AS n FROM tenants");
+      const leaseCount = await get<{ n: number }>("SELECT COUNT(*) AS n FROM leases");
+      const chargeCount = await get<{ n: number }>("SELECT COUNT(*) AS n FROM rent_charges");
+
+      if ((tenantCount?.n ?? 0) === 0 && (leaseCount?.n ?? 0) === 0) {
+        for (const [propertyIndex, unitName, firstName, lastName] of DEMO_TENANTS) {
+          const propertyName = DEMO_PROPERTIES[propertyIndex]?.[0];
+          if (!propertyName) continue;
+          const unit = await get<{ id: number; market_rent: number }>(
+            `SELECT u.id, u.market_rent
+             FROM units u
+             JOIN properties p ON p.id = u.property_id
+             WHERE p.name = ? AND u.name = ?
+             LIMIT 1`,
+            [propertyName, unitName],
+          );
+          if (!unit) continue;
+
+          const tenant = await run(
+            "INSERT INTO tenants (first_name, last_name) VALUES (?, ?)",
+            [firstName, lastName],
+          );
+          await run(
+            `INSERT INTO leases
+              (unit_id, primary_tenant_id, start_date, end_date, monthly_rent, rent_due_day, status, notes)
+             VALUES (?, ?, date('now','start of year'), date('now','+1 year'), ?, 1, 'active', 'Demo lease')`,
+            [unit.id, tenant.lastInsertRowid, unit.market_rent],
+          );
+        }
+      }
+
+      if ((chargeCount?.n ?? 0) === 0) {
+        await run(
+          `INSERT OR IGNORE INTO rent_charges (lease_id, period, due_date, amount, amount_paid, status, notes)
+           SELECT id, strftime('%Y-%m','now'), date('now','start of month'), monthly_rent, 0, 'open', 'Demo current-month charge'
+           FROM leases
+           WHERE status = 'active'`,
+        );
       }
     }
 
