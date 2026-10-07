@@ -131,6 +131,81 @@ async function ensureSeeded(): Promise<void> {
            WHERE status = 'active'`,
         );
       }
+
+      const reconCount = await get<{ n: number }>("SELECT COUNT(*) AS n FROM payment_reconciliations");
+      if ((reconCount?.n ?? 0) === 0) {
+        const demoCharge = async (unitName: string) => get<any>(
+          `SELECT c.id charge_id, c.amount, c.due_date, l.unit_id, l.primary_tenant_id,
+                  u.property_id, u.name unit_name, p.name property_name
+           FROM rent_charges c
+           JOIN leases l ON l.id = c.lease_id
+           JOIN units u ON u.id = l.unit_id
+           JOIN properties p ON p.id = u.property_id
+           WHERE c.period = strftime('%Y-%m','now') AND u.name = ?
+           ORDER BY c.id DESC LIMIT 1`,
+          [unitName],
+        );
+
+        const exact = await demoCharge("Unit 1");
+        if (exact) {
+          const payment = await run(
+            `INSERT INTO payments (charge_id, paid_at, amount, method, reference, notes)
+             VALUES (?, ?, ?, 'ach', 'DEMO-EXACT-001', 'Demo exact-match payment')`,
+            [exact.charge_id, exact.due_date, exact.amount],
+          );
+          const recon = await run(
+            `INSERT INTO payment_reconciliations
+              (payment_id, charge_id, unit_id, received_amount, expected_amount, received_at, reference, match_type, difference, confidence, status, decision, reviewed_at)
+             VALUES (?, ?, ?, ?, ?, ?, 'DEMO-EXACT-001', 'exact', 0, 1, 'auto_matched', 'auto_matched', datetime('now'))`,
+            [payment.lastInsertRowid, exact.charge_id, exact.unit_id, exact.amount, exact.amount, exact.due_date],
+          );
+          await run("UPDATE rent_charges SET amount_paid = amount, status = 'paid' WHERE id = ?", [exact.charge_id]);
+          await run(
+            `INSERT INTO activity_events
+              (property_id, unit_id, tenant_id, event_type, entity_type, entity_id, summary, detail, source)
+             VALUES (?, ?, ?, 'payment', 'payment_reconciliation', ?, 'Demo payment automatically reconciled', 'Exact match demo scenario.', 'system')`,
+            [exact.property_id, exact.unit_id, exact.primary_tenant_id, recon.lastInsertRowid],
+          );
+        }
+
+        const short = await demoCharge("Unit 101");
+        if (short) {
+          const received = Math.max(1, Number(short.amount) - 14);
+          const recon = await run(
+            `INSERT INTO payment_reconciliations
+              (charge_id, unit_id, received_amount, expected_amount, received_at, reference, match_type, difference, confidence, status)
+             VALUES (?, ?, ?, ?, ?, 'DEMO-SHORT-101', 'short', -14, 1, 'needs_review')`,
+            [short.charge_id, short.unit_id, received, short.amount, short.due_date],
+          );
+          await run(
+            `INSERT INTO review_items
+              (property_id, unit_id, tenant_id, review_type, title, reason, proposed_action, proposed_json, confidence, risk_level)
+             VALUES (?, ?, ?, 'payment', ?, 'Payment is $14.00 short of the current rent charge.', 'Review the short payment before applying it.', ?, 1, 'normal')`,
+            [short.property_id, short.unit_id, short.primary_tenant_id,
+             "Demo payment needs review — " + short.unit_name,
+             JSON.stringify({ reconciliation_id: recon.lastInsertRowid, reference: "DEMO-SHORT-101", received_amount: received, expected_amount: short.amount, match_type: "short" })],
+          );
+        }
+
+        const late = await demoCharge("Unit 102");
+        if (late) {
+          const recon = await run(
+            `INSERT INTO payment_reconciliations
+              (charge_id, unit_id, received_amount, expected_amount, received_at, reference, match_type, difference, confidence, status)
+             VALUES (?, ?, ?, ?, datetime('now'), 'DEMO-LATE-102', 'late', 0, 1, 'needs_review')`,
+            [late.charge_id, late.unit_id, late.amount, late.amount],
+          );
+          await run(
+            `INSERT INTO review_items
+              (property_id, unit_id, tenant_id, review_type, title, reason, proposed_action, proposed_json, confidence, risk_level)
+             VALUES (?, ?, ?, 'payment', ?, ?, 'Confirm the payment and review whether late-payment follow-up is required.', ?, 1, 'normal')`,
+            [late.property_id, late.unit_id, late.primary_tenant_id,
+             "Demo late payment needs review — " + late.unit_name,
+             "Payment was received after the due date (" + late.due_date + ").",
+             JSON.stringify({ reconciliation_id: recon.lastInsertRowid, reference: "DEMO-LATE-102", received_amount: late.amount, expected_amount: late.amount, match_type: "late" })],
+          );
+        }
+      }
     }
 
     const vendors = await get<{ n: number }>("SELECT COUNT(*) AS n FROM vendors");
