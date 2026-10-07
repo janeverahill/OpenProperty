@@ -1,0 +1,123 @@
+# Local MVP Test Drive
+
+This is the recommended first test before setting up a hosted preview.
+
+Why local first:
+- no deployment account changes
+- no cloud database setup
+- no hosting cost
+- fastest way to prove the workflow end to end
+- keeps demo/test data separate from any future production environment
+
+## 1. Requirements
+
+Install Node.js 20 or newer. Then enable Corepack so `pnpm` is available:
+
+```bash
+corepack enable
+```
+
+## 2. Get the MVP branch
+
+Clone the repository and switch to the MVP branch:
+
+```bash
+git clone https://github.com/janeverahill/OpenProperty.git
+cd OpenProperty
+git checkout small-pm-os-v2
+```
+
+If the repository is already on your computer, use:
+
+```bash
+git fetch
+git checkout small-pm-os-v2
+git pull
+```
+
+## 3. Install
+
+```bash
+pnpm install
+```
+
+## 4. Verify the MVP
+
+```bash
+pnpm mvp:verify
+```
+
+This runs the TypeScript check and production build.
+
+## 5. Start the test drive
+
+```bash
+pnpm demo
+```
+
+The command:
+1. creates/updates the local D1 database,
+2. starts the API,
+3. starts the web interface.
+
+Open the Vite address shown in Terminal, normally:
+
+`http://localhost:5173`
+
+Keep the Terminal window open while testing.
+
+## 6. Holy-shit test
+
+Start with the Dashboard, then try these in order:
+
+### A. Invoice to unit history
+Open **AI Inbox → Add intake → Manual note** and enter:
+
+```text
+Invoice for Unit 204. New Whirlpool stove, January 12 2027. $849.00
+```
+
+If there is no Unit 204 in the demo portfolio, that is useful: confirm the item reaches **Needs Attention**, assign an existing demo unit, approve it, then check:
+- Documents & Deadlines
+- the selected property
+- Unit history & upgrades
+
+### B. Maintenance
+Enter a maintenance request such as:
+
+```text
+Unit 1 bathroom sink is leaking under the cabinet.
+```
+
+Confirm an unambiguous assigned request can become a work order, while anything unclear remains visible for review.
+
+### C. Needs Attention
+Confirm the screen explains:
+- why the item stopped,
+- what will happen if approved,
+- which unit will receive the record.
+
+### D. Payment reconciliation
+Use the rent ledger/reconciliation area to check:
+- exact payment
+- short payment
+- late payment
+
+The exact routine case should be the least intrusive. Exceptions should remain visible.
+
+## What not to test yet
+
+The following are intentionally not connected in this MVP:
+- actual photo upload
+- OCR/vision
+- Gmail ingestion
+- real tenant imports
+- production login/security
+- billing
+- hosted production data
+
+A photo selected in Quick Intake is only a local UI reference. The system does not upload or read the image.
+
+## After the local test
+
+If the core workflow feels right, the next recommended step is a hosted preview with a real Cloudflare D1 database. Do that only after the local acceptance test so cloud setup is not mixed with product debugging.
