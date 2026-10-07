@@ -108,6 +108,12 @@ The MVP is ready for a first real user test when:
 - no screen implies a capability that is not connected,
 - CI typecheck and production build remain green.
 
+## Preview / deployment readiness
+
+The codebase is ready for a local/dev click-through, but it is **not wired to a remote database yet**. `wrangler.toml` still uses `database_id = "local"`, which is correct for development but means a hosted Cloudflare preview needs a real D1 database to be created and its ID configured first.
+
+That is the next genuine setup point that needs an account/resource decision. Do not replace the local ID or deploy until the preview host/account is chosen.
+
 ## Next production phase
 
 Priority order:
