@@ -11,7 +11,8 @@
     "demo": "pnpm dev",
     "mvp:verify": "pnpm typecheck && pnpm build",
     "demo:reset": "node -e \"require('fs').rmSync('.wrangler/state',{recursive:true,force:true})\" && pnpm db:migrate",
-    "demo:first-run": "pnpm install && pnpm demo:reset && pnpm demo"
+    "demo:first-run": "pnpm install && pnpm demo:reset && pnpm demo",
+    "mvp:smoke": "pnpm db:migrate && node scripts/mvp-smoke.mjs"
   },
   "dependencies": {
     "@clawnify/app": "^0.2.1",
