@@ -841,11 +841,30 @@ app.get("/api/operations/self-check", (c) => {
       actual: got,
     };
   });
+  const invoiceCases = [
+    {
+      name: "invoice history facts",
+      input: "Invoice for Unit 204. New Whirlpool stove, January 12 2027. $849.00",
+      want: { category: "invoice", unit_hint: "204", document_date: "2027-01-12", history_label: "New Whirlpool stove", history_cost: 849 },
+    },
+    {
+      name: "replacement invoice facts",
+      input: "Receipt - Unit 103 replaced toilet, March 4 2026, $425",
+      want: { category: "invoice", unit_hint: "103", document_date: "2026-03-04", history_label: "Replaced toilet", history_cost: 425 },
+    },
+  ].map(test => {
+    const got = extractDocumentFacts(test.input);
+    const passed = Object.entries(test.want).every(([key, value]) => got[key as keyof typeof got] === value);
+    return { name: test.name, passed, expected: test.want, actual: got };
+  });
+
+  const allCases = [...cases, ...invoiceCases];
   return c.json({
-    passed: cases.every(test => test.passed),
-    passed_count: cases.filter(test => test.passed).length,
-    total: cases.length,
+    passed: allCases.every(test => test.passed),
+    passed_count: allCases.filter(test => test.passed).length,
+    total: allCases.length,
     cases,
+    invoice_cases: invoiceCases,
   });
 });
 
