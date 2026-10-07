@@ -40,6 +40,7 @@ export function PropertyPage({ id, navigate }: { id: number; navigate: (to: stri
   const [unitDialogOpen, setUnitDialogOpen] = useState(false);
   const [woDialogOpen, setWoDialogOpen] = useState(false);
   const [assetUnit, setAssetUnit] = useState<Unit | null>(null);
+  const [editingAsset, setEditingAsset] = useState<UnitAsset | undefined>(undefined);
   const [assetUnitId, setAssetUnitId] = useState("");
 
   async function load() {
@@ -188,7 +189,7 @@ export function PropertyPage({ id, navigate }: { id: number; navigate: (to: stri
                 </select>
                 <Button size="sm" variant="outline" disabled={!assetUnitId} onClick={() => {
                   const unit = units.find((candidate) => candidate.id === Number(assetUnitId));
-                  if (unit) setAssetUnit(unit);
+                  if (unit) { setEditingAsset(undefined); setAssetUnit(unit); }
                 }}>
                   <Plus className="mr-1 h-4 w-4" /> Add upgrade
                 </Button>
@@ -202,7 +203,7 @@ export function PropertyPage({ id, navigate }: { id: number; navigate: (to: stri
           ) : (
             <Card className="divide-y">
               {assets.slice(0, 12).map((asset) => (
-                <div key={asset.id} className="flex items-start justify-between gap-4 p-4">
+                <div key={asset.id} className="flex cursor-pointer items-start justify-between gap-4 p-4 transition-colors hover:bg-muted/40" onClick={() => { const unit = units.find((candidate) => candidate.id === asset.unit_id); if (unit) { setEditingAsset(asset); setAssetUnit(unit); } }}>
                   <div className="flex min-w-0 items-start gap-3">
                     <PackageOpen className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                     <div className="min-w-0">
@@ -270,9 +271,10 @@ export function PropertyPage({ id, navigate }: { id: number; navigate: (to: stri
       />
       {assetUnit && <UnitAssetDialog
         open={Boolean(assetUnit)}
-        onOpenChange={(o) => { if (!o) setAssetUnit(null); }}
+        onOpenChange={(o) => { if (!o) { setEditingAsset(undefined); setAssetUnit(null); } }}
         unit={assetUnit}
-        onSaved={() => void load()}
+        asset={editingAsset}
+        onSaved={() => { setEditingAsset(undefined); setAssetUnit(null); void load(); }}
       />}
       <WorkOrderDialog
         open={woDialogOpen}
