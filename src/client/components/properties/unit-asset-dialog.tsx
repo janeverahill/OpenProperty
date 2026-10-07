@@ -13,7 +13,7 @@ export function UnitAssetDialog({ open, onOpenChange, unit, asset, onSaved }: {
   open: boolean; onOpenChange: (open: boolean) => void; unit: Unit; asset?: UnitAsset; onSaved?: () => void;
 }) {
   const app = useApp();
-  const [assetType, setAssetType] = useState("");
+  const [assetType, setAssetType] = useState("property_history");
   const [description, setDescription] = useState("");
   const [installedAt, setInstalledAt] = useState("");
   const [life, setLife] = useState("");
@@ -24,7 +24,7 @@ export function UnitAssetDialog({ open, onOpenChange, unit, asset, onSaved }: {
 
   useEffect(() => {
     if (!open) return;
-    setAssetType(asset?.asset_type ?? "");
+    setAssetType(asset?.asset_type ?? "property_history");
     setDescription(asset?.description ?? "");
     setInstalledAt(asset?.installed_at?.slice(0, 10) ?? "");
     setLife(asset?.expected_life_years != null ? String(asset.expected_life_years) : "");
@@ -34,7 +34,7 @@ export function UnitAssetDialog({ open, onOpenChange, unit, asset, onSaved }: {
   }, [open, asset]);
 
   async function save() {
-    if (!assetType.trim()) return;
+    if (asset ? !assetType.trim() : !description.trim()) return;
     setSaving(true);
     try {
       const payload = {
@@ -49,20 +49,20 @@ export function UnitAssetDialog({ open, onOpenChange, unit, asset, onSaved }: {
   }
 
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent>
-    <DialogHeader><DialogTitle>{asset ? "Edit asset or upgrade" : `Add asset or upgrade — ${unit.name}`}</DialogTitle></DialogHeader>
+    <DialogHeader><DialogTitle>{asset ? "Edit unit history" : `Add unit history — ${unit.name}`}</DialogTitle></DialogHeader>
     <div className="grid gap-3">
-      <div><Label htmlFor="asset-type">What was installed or replaced?</Label><Input id="asset-type" value={assetType} onChange={e => setAssetType(e.target.value)} placeholder="Flooring, fridge, windows…" /></div>
-      <div><Label htmlFor="asset-description">Description</Label><Input id="asset-description" value={description} onChange={e => setDescription(e.target.value)} placeholder="Luxury vinyl plank throughout unit" /></div>
+      {asset && asset.asset_type !== "property_history" && <div><Label htmlFor="asset-type">Record type</Label><Input id="asset-type" value={assetType} onChange={e => setAssetType(e.target.value)} /></div>}
+      <div><Label htmlFor="asset-description">What happened?</Label><Input id="asset-description" value={description} onChange={e => setDescription(e.target.value)} placeholder="New Whirlpool stove" /></div>
       <div className="grid grid-cols-3 gap-3">
-        <div><Label htmlFor="asset-date">Installed</Label><Input id="asset-date" type="date" value={installedAt} onChange={e => setInstalledAt(e.target.value)} /></div>
+        <div><Label htmlFor="asset-date">Date</Label><Input id="asset-date" type="date" value={installedAt} onChange={e => setInstalledAt(e.target.value)} /></div>
         <div><Label htmlFor="asset-life">Life (years)</Label><Input id="asset-life" type="number" min="1" value={life} onChange={e => setLife(e.target.value)} /></div>
-        <div><Label htmlFor="asset-cost">Replacement cost</Label><Input id="asset-cost" type="number" min="0" step="0.01" value={cost} onChange={e => setCost(e.target.value)} /></div>
+        <div><Label htmlFor="asset-cost">Cost</Label><Input id="asset-cost" type="number" min="0" step="0.01" value={cost} onChange={e => setCost(e.target.value)} /></div>
       </div>
       <div><Label>Status</Label><Select value={status} onValueChange={v => setStatus(v as UnitAsset["status"])}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>
         <SelectItem value="active">Active</SelectItem><SelectItem value="needs_attention">Needs attention</SelectItem><SelectItem value="replaced">Replaced</SelectItem><SelectItem value="removed">Removed</SelectItem>
       </SelectContent></Select></div>
       <div><Label htmlFor="asset-notes">Notes</Label><Textarea id="asset-notes" value={notes} onChange={e => setNotes(e.target.value)} rows={3} /></div>
     </div>
-    <DialogFooter><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button onClick={save} disabled={saving || !assetType.trim()}>{saving ? "Saving…" : "Save"}</Button></DialogFooter>
+    <DialogFooter><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button onClick={save} disabled={saving || (asset ? !assetType.trim() : !description.trim())}>{saving ? "Saving…" : "Save"}</Button></DialogFooter>
   </DialogContent></Dialog>;
 }
