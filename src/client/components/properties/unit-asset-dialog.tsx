@@ -53,14 +53,16 @@ export function UnitAssetDialog({ open, onOpenChange, unit, asset, onSaved }: {
     <div className="grid gap-3">
       {asset && asset.asset_type !== "property_history" && <div><Label htmlFor="asset-type">Record type</Label><Input id="asset-type" value={assetType} onChange={e => setAssetType(e.target.value)} /></div>}
       <div><Label htmlFor="asset-description">What happened?</Label><Input id="asset-description" value={description} onChange={e => setDescription(e.target.value)} placeholder="New Whirlpool stove" /></div>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <div><Label htmlFor="asset-date">Date</Label><Input id="asset-date" type="date" value={installedAt} onChange={e => setInstalledAt(e.target.value)} /></div>
-        <div><Label htmlFor="asset-life">Life (years)</Label><Input id="asset-life" type="number" min="1" value={life} onChange={e => setLife(e.target.value)} /></div>
         <div><Label htmlFor="asset-cost">Cost</Label><Input id="asset-cost" type="number" min="0" step="0.01" value={cost} onChange={e => setCost(e.target.value)} /></div>
       </div>
-      <div><Label>Status</Label><Select value={status} onValueChange={v => setStatus(v as UnitAsset["status"])}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>
-        <SelectItem value="active">Active</SelectItem><SelectItem value="needs_attention">Needs attention</SelectItem><SelectItem value="replaced">Replaced</SelectItem><SelectItem value="removed">Removed</SelectItem>
-      </SelectContent></Select></div>
+      {asset && asset.asset_type !== "property_history" && <>
+        <div><Label htmlFor="asset-life">Expected life (years)</Label><Input id="asset-life" type="number" min="1" value={life} onChange={e => setLife(e.target.value)} /></div>
+        <div><Label>Status</Label><Select value={status} onValueChange={v => setStatus(v as UnitAsset["status"])}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>
+          <SelectItem value="active">Active</SelectItem><SelectItem value="needs_attention">Needs attention</SelectItem><SelectItem value="replaced">Replaced</SelectItem><SelectItem value="removed">Removed</SelectItem>
+        </SelectContent></Select></div>
+      </>}
       <div><Label htmlFor="asset-notes">Notes</Label><Textarea id="asset-notes" value={notes} onChange={e => setNotes(e.target.value)} rows={3} /></div>
     </div>
     <DialogFooter><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button onClick={save} disabled={saving || (asset ? !assetType.trim() : !description.trim())}>{saving ? "Saving…" : "Save"}</Button></DialogFooter>
