@@ -72,7 +72,7 @@ export function ReviewQueuePage() {
             <p className="text-sm text-muted-foreground">{item.reason || "Manager review requested."}</p>
             <p className="mt-2 text-xs text-muted-foreground">
               {[item.property_name, item.unit_name, item.tenant_name].filter(Boolean).join(" · ")}
-              {item.confidence != null ? ` · AI confidence ${Math.round(item.confidence * 100)}%` : ""}
+              {item.confidence != null ? ` · Automation confidence ${Math.round(item.confidence * 100)}%` : ""}
             </p>
             {item.proposed_action && <p className="mt-3 text-sm"><span className="font-medium">Suggested:</span> {item.proposed_action}</p>}
             {(item.review_type === "document" || item.review_type === "maintenance") && <div className="mt-3">
