@@ -54,16 +54,18 @@ export function DashboardPage({ navigate }: { navigate: (to: string) => void }) 
 
   return (
     <PageShell
-      title="Dashboard"
-      meta={`Snapshot of ${new Date().toLocaleDateString(undefined, { month: "long", year: "numeric" })}`}
+      title="Good morning"
+      meta={`Your property operations snapshot · ${new Date().toLocaleDateString(undefined, { month: "long", year: "numeric" })}`}
     >
 
         {operations && (
           <Card className="p-5">
             <div className="mb-4 flex items-center justify-between gap-4">
               <div>
-                <h2 className="text-sm font-semibold">AI operations</h2>
-                <p className="text-xs text-muted-foreground">Manage by exception — routine work stays out of your way.</p>
+                <h2 className="text-sm font-semibold">{operations.needs_attention === 0 ? "Everything routine is handled" : `${operations.needs_attention} item${operations.needs_attention === 1 ? "" : "s"} need your decision`}</h2>
+                <p className="text-xs text-muted-foreground">
+                  {operations.handled_today} handled today · {operations.inbox_unprocessed} waiting in Inbox · {operations.payment_exceptions} payment exception{operations.payment_exceptions === 1 ? "" : "s"}
+                </p>
               </div>
               <button
                 type="button"
