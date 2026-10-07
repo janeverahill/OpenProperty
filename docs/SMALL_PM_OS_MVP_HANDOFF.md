@@ -81,6 +81,10 @@ Not connected yet:
 
 The current text classifier and invoice fact extractor are conservative rule-based automation. They are intentionally not presented as a hidden AI/model call.
 
+## Recommended first step
+
+Use the **local MVP test drive first**, before any hosted preview. It is faster, free, keeps test data isolated, and separates product debugging from cloud setup. Follow [`LOCAL_MVP_TEST_DRIVE.md`](LOCAL_MVP_TEST_DRIVE.md). The repo now includes `pnpm demo` to start the local test and `pnpm mvp:verify` to run the typecheck + production build.
+
 ## Recommended first click-through test
 
 1. Open Dashboard.
