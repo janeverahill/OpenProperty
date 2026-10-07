@@ -27,3 +27,5 @@ jobs:
         run: pnpm typecheck
       - name: Build
         run: pnpm build
+      - name: MVP runtime smoke test
+        run: pnpm mvp:smoke
