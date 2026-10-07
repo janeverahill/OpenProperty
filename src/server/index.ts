@@ -1131,6 +1131,9 @@ app.post("/api/inbox", async (c) => {
 
 function classifyInboxText(item: { source_type?: string; subject?: string | null; raw_text?: string | null }) {
   const text = ((item.subject ?? "") + " " + (item.raw_text ?? "")).toLowerCase();
+  if (/\b(invoice|receipt|quote|estimate)\b/i.test(text)) {
+    return { item_type: "document", confidence: 0.98, reason: "Invoice or vendor document language detected." };
+  }
   const maintenanceTerms = ["leak", "leaking", "toilet", "sink", "faucet", "tap", "plumbing", "heat", "heating", "furnace",
     "air conditioner", "a/c", "electrical", "outlet", "light", "broken", "repair", "maintenance", "dryer", "washer",
     "appliance", "door", "window", "smoke detector", "alarm"];
