@@ -1284,6 +1284,8 @@ const ProcessInboxDocumentInput = z.object({
   deadline_at: z.string().optional().nullable(),
   ai_summary: z.string().optional().nullable(),
   storage_ref: z.string().optional().nullable(),
+  history_label: z.string().optional().nullable(),
+  history_cost: z.number().nonnegative().optional().nullable(),
   force_review: z.boolean().optional(),
 });
 
@@ -1323,7 +1325,8 @@ app.post("/api/inbox/:id/process-document", async (c) => {
          reasons || "Review this document before filing it.",
          "Confirm the document details, assignment and any deadline before filing.",
          JSON.stringify({ category, title, document_date: d.document_date ?? null, deadline_at: d.deadline_at ?? null,
-           ai_summary: d.ai_summary ?? item.raw_text ?? null, storage_ref: d.storage_ref ?? item.source_ref ?? null }),
+           ai_summary: d.ai_summary ?? item.raw_text ?? null, storage_ref: d.storage_ref ?? item.source_ref ?? null,
+           history_label: d.history_label ?? null, history_cost: d.history_cost ?? null }),
          item.confidence ?? null],
       );
     }
@@ -1352,8 +1355,36 @@ app.post("/api/inbox/:id/process-document", async (c) => {
        "Review the document and confirm the required follow-up before the deadline."],
     );
   }
+  let historyRecord: any = null;
+  // Extraction/OCR can pass a concise history label such as "New Whirlpool stove".
+  // If the unit is already confirmed, file that operational history automatically.
+  // If the unit is unclear, the document flow above sends the item to review instead.
+  if (item.unit_id && d.history_label?.trim()) {
+    const duplicateHistory = await get<any>(
+      "SELECT id FROM unit_assets WHERE unit_id = ? AND description = ? AND installed_at IS ? LIMIT 1",
+      [item.unit_id, d.history_label.trim(), d.document_date ?? null],
+    );
+    if (!duplicateHistory) {
+      const asset = await run(
+        `INSERT INTO unit_assets
+          (unit_id, asset_type, description, installed_at, replacement_cost, status, notes)
+         VALUES (?, 'property_history', ?, ?, ?, 'active', ?)`,
+        [item.unit_id, d.history_label.trim(), d.document_date ?? null, d.history_cost ?? null,
+         "Automatically created from filed document #" + doc.lastInsertRowid],
+      );
+      historyRecord = await get("SELECT * FROM unit_assets WHERE id = ?", [asset.lastInsertRowid]);
+      await run(
+        `INSERT INTO activity_events
+          (property_id, unit_id, tenant_id, event_type, entity_type, entity_id, summary, detail, source)
+         VALUES (?, ?, ?, 'asset', 'unit_asset', ?, ?, ?, 'ai')`,
+        [item.property_id, item.unit_id, item.tenant_id, asset.lastInsertRowid,
+         "Unit history updated: " + d.history_label.trim(),
+         "Created automatically from document #" + doc.lastInsertRowid],
+      );
+    }
+  }
   const row = await get("SELECT * FROM documents WHERE id = ?", [doc.lastInsertRowid]);
-  return c.json({ needs_review: false, document: row }, 201);
+  return c.json({ needs_review: false, document: row, unit_history: historyRecord }, 201);
 });
 
 const ReviewInput = z.object({
