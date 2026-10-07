@@ -202,7 +202,7 @@ export function PropertyPage({ id, navigate }: { id: number; navigate: (to: stri
             </Card>
           ) : (
             <Card className="divide-y">
-              {assets.slice(0, 12).map((asset) => (
+              {assets.map((asset) => (
                 <div key={asset.id} className="flex cursor-pointer items-start justify-between gap-4 p-4 transition-colors hover:bg-muted/40" onClick={() => { const unit = units.find((candidate) => candidate.id === asset.unit_id); if (unit) { setEditingAsset(asset); setAssetUnit(unit); } }}>
                   <div className="flex min-w-0 items-start gap-3">
                     <PackageOpen className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
