@@ -27,7 +27,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   default_rent_due_day: 1,
   late_fee_amount: 50,
   late_fee_grace_days: 5,
-  currency: "USD",
+  currency: "CAD",
 };
 
 function parseSettings(raw: Record<string, string>): AppSettings {
