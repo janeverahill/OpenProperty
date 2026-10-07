@@ -6,6 +6,17 @@ import type { ReviewItem, Unit } from "@/types";
 import { Card } from "@/components/ui/card";
 import { PageShell } from "@/components/page-shell";
 
+function proposalRecord(item: ReviewItem): Record<string, unknown> {
+  if (!item.proposed_json) return {};
+  try { return JSON.parse(item.proposed_json) as Record<string, unknown>; }
+  catch { return {}; }
+}
+
+function reviewNeedsUnit(item: ReviewItem) {
+  const proposed = proposalRecord(item);
+  return Boolean(proposed.history_label);
+}
+
 function proposalDetails(item: ReviewItem) {
   if (!item.proposed_json) return [] as Array<[string, string]>;
   try {
@@ -101,8 +112,12 @@ export function ReviewQueuePage() {
           <div className="flex shrink-0 gap-2">
             <button disabled={working === item.id} onClick={() => void resolve(item, "dismissed")}
               className="rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50">Dismiss</button>
-            <button disabled={working === item.id} onClick={() => void resolve(item, "approved")}
-              className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">Approve</button>
+            <button
+              disabled={working === item.id || (reviewNeedsUnit(item) && !(unitSelections[item.id] || item.unit_id))}
+              title={reviewNeedsUnit(item) && !(unitSelections[item.id] || item.unit_id) ? "Choose the correct unit before approving this history item." : undefined}
+              onClick={() => void resolve(item, "approved")}
+              className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+            >Approve</button>
           </div>
         </div>
       </Card>)}</div>}
