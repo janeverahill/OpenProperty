@@ -15,6 +15,9 @@ export function UnitAssetDialog({ open, onOpenChange, unit, asset, onSaved }: {
   const app = useApp();
   const [assetType, setAssetType] = useState("");
   const [description, setDescription] = useState("");
+  const [make, setMake] = useState("");
+  const [model, setModel] = useState("");
+  const [serial, setSerial] = useState("");
   const [installedAt, setInstalledAt] = useState("");
   const [life, setLife] = useState("");
   const [cost, setCost] = useState("");
@@ -26,6 +29,9 @@ export function UnitAssetDialog({ open, onOpenChange, unit, asset, onSaved }: {
     if (!open) return;
     setAssetType(asset?.asset_type ?? "");
     setDescription(asset?.description ?? "");
+    setMake(asset?.make ?? "");
+    setModel(asset?.model ?? "");
+    setSerial(asset?.serial_number ?? "");
     setInstalledAt(asset?.installed_at?.slice(0, 10) ?? "");
     setLife(asset?.expected_life_years != null ? String(asset.expected_life_years) : "");
     setCost(asset?.replacement_cost != null ? String(asset.replacement_cost) : "");
@@ -39,6 +45,7 @@ export function UnitAssetDialog({ open, onOpenChange, unit, asset, onSaved }: {
     try {
       const payload = {
         unit_id: unit.id, asset_type: assetType.trim(), description: description.trim() || null,
+        make: make.trim() || null, model: model.trim() || null, serial_number: serial.trim() || null,
         installed_at: installedAt || null, expected_life_years: life ? Number(life) : null,
         replacement_cost: cost ? Number(cost) : null, status, notes: notes.trim() || null,
       };
@@ -53,6 +60,11 @@ export function UnitAssetDialog({ open, onOpenChange, unit, asset, onSaved }: {
     <div className="grid gap-3">
       <div><Label htmlFor="asset-type">What was installed or replaced?</Label><Input id="asset-type" value={assetType} onChange={e => setAssetType(e.target.value)} placeholder="Flooring, fridge, windows…" /></div>
       <div><Label htmlFor="asset-description">Description</Label><Input id="asset-description" value={description} onChange={e => setDescription(e.target.value)} placeholder="Luxury vinyl plank throughout unit" /></div>
+      <div className="grid grid-cols-3 gap-3">
+        <div><Label htmlFor="asset-make">Make</Label><Input id="asset-make" value={make} onChange={e => setMake(e.target.value)} /></div>
+        <div><Label htmlFor="asset-model">Model</Label><Input id="asset-model" value={model} onChange={e => setModel(e.target.value)} /></div>
+        <div><Label htmlFor="asset-serial">Serial number</Label><Input id="asset-serial" value={serial} onChange={e => setSerial(e.target.value)} /></div>
+      </div>
       <div className="grid grid-cols-3 gap-3">
         <div><Label htmlFor="asset-date">Installed</Label><Input id="asset-date" type="date" value={installedAt} onChange={e => setInstalledAt(e.target.value)} /></div>
         <div><Label htmlFor="asset-life">Life (years)</Label><Input id="asset-life" type="number" min="1" value={life} onChange={e => setLife(e.target.value)} /></div>
